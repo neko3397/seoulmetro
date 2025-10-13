@@ -1,0 +1,8 @@
+# Supabase CLI project config
+project_id = "nkowcjmjqaszwtrvgedt"
+
+[functions]
+# Functions will be served at /functions/v1/<name>
+
+[functions.make-server-a8898ff1]
+verify_jwt = false
