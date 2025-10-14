@@ -22,7 +22,7 @@ export const useWatchProgress = () => {
   useEffect(() => {
     const currentUser = getCurrentUser();
     const storageKey = currentUser ? `video-progress-${currentUser.employeeId}` : 'video-progress';
-    
+
     const saved = localStorage.getItem(storageKey);
     if (saved) {
       try {
@@ -39,7 +39,7 @@ export const useWatchProgress = () => {
   const saveProgressToStorage = useCallback((data: Record<string, WatchProgress>) => {
     const currentUser = getCurrentUser();
     const storageKey = currentUser ? `video-progress-${currentUser.employeeId}` : 'video-progress';
-    
+
     localStorage.setItem(storageKey, JSON.stringify(data));
     setProgressData(data);
   }, []);
@@ -48,7 +48,7 @@ export const useWatchProgress = () => {
   const updateProgress = useCallback(async (videoId: string, watchedSeconds: number, totalDuration: number, categoryId?: string) => {
     const completed = watchedSeconds >= totalDuration * 0.9; // 90% 이상 시청 시 완료로 간주
     const progressPercentage = Math.min((watchedSeconds / totalDuration) * 100, 100);
-    
+
     const newProgress: WatchProgress = {
       videoId,
       watchedSeconds,

@@ -5,7 +5,7 @@ import { Progress } from './ui/progress';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Search, Eye, Clock, PlayCircle } from 'lucide-react';
+import { Search, Eye, Clock, PlayCircle, RefreshCcw } from 'lucide-react';
 import { projectId, publicAnonKey } from '../utils/supabase/info';
 
 interface UserProgress {
@@ -43,35 +43,40 @@ export function UserProgressManagement() {
   const loadData = async () => {
     try {
       setLoading(true);
+      const v = Date.now();
 
       // Load categories
       const categoriesResponse = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/categories`,
+        `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/categories?v=${v}`,
         {
+          cache: 'no-store',
           headers: {
-            'Authorization': `Bearer ${publicAnonKey}`
+            'Authorization': `Bearer ${publicAnonKey}`,
+            'Cache-Control': 'no-cache'
           }
         }
       );
       const categoriesData = await categoriesResponse.json();
-      
+
       const categoriesMap: { [key: string]: CategoryInfo } = {};
       const videosMap: { [key: string]: VideoInfo } = {};
 
       // Load videos for each category
       for (const category of categoriesData.categories || []) {
         categoriesMap[category.id] = category;
-        
+
         const videosResponse = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/videos/${category.id}`,
+          `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/videos/${category.id}?v=${v}`,
           {
+            cache: 'no-store',
             headers: {
-              'Authorization': `Bearer ${publicAnonKey}`
+              'Authorization': `Bearer ${publicAnonKey}`,
+              'Cache-Control': 'no-cache'
             }
           }
         );
         const videosData = await videosResponse.json();
-        
+
         for (const video of videosData.videos || []) {
           videosMap[video.id] = video;
         }
@@ -82,15 +87,17 @@ export function UserProgressManagement() {
 
       // Load progress data
       const progressResponse = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/admin/progress`,
+        `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/admin/progress?v=${v}`,
         {
+          cache: 'no-store',
           headers: {
-            'Authorization': `Bearer ${publicAnonKey}`
+            'Authorization': `Bearer ${publicAnonKey}`,
+            'Cache-Control': 'no-cache'
           }
         }
       );
       const progressData = await progressResponse.json();
-      
+
       setAllProgress(progressData.progress || []);
     } catch (error) {
       console.error('Error loading data:', error);
@@ -99,7 +106,7 @@ export function UserProgressManagement() {
         'fire': { id: 'fire', title: '화재발생 시 대응요령' },
         'safety': { id: 'safety', title: '지하철 안전운행' }
       };
-      
+
       const mockVideos = {
         'fire_1': { id: 'fire_1', title: '지하철 화재 발생 시 초기 대응', duration: '5:30' },
         'safety_1': { id: 'safety_1', title: '지하철 안전운행 기본 수칙', duration: '8:20' }
@@ -132,6 +139,11 @@ export function UserProgressManagement() {
     }
   };
 
+  const handleRefresh = () => {
+    // 수동 새로고침: 동일한 로딩 플로우 사용
+    loadData();
+  };
+
   const getUserStats = () => {
     const userStats: { [key: string]: { totalVideos: number; completedVideos: number; avgProgress: number; lastActivity: string } } = {};
 
@@ -149,7 +161,7 @@ export function UserProgressManagement() {
       if (progress.progress >= 80) {
         userStats[progress.userId].completedVideos++;
       }
-      
+
       if (new Date(progress.lastWatched) > new Date(userStats[progress.userId].lastActivity)) {
         userStats[progress.userId].lastActivity = progress.lastWatched;
       }
@@ -173,7 +185,7 @@ export function UserProgressManagement() {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
-    
+
     if (hours > 0) {
       return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     }
@@ -205,11 +217,25 @@ export function UserProgressManagement() {
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader>
-          <CardTitle>사용자 시청 현황</CardTitle>
-          <CardDescription>
-            모든 사용자의 영상 시청 진행률과 활동 현황을 관리합니다.
-          </CardDescription>
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div>
+            <CardTitle>사용자 시청 현황</CardTitle>
+            <CardDescription>
+              모든 사용자의 영상 시청 진행률과 활동 현황을 관리합니다.
+            </CardDescription>
+          </div>
+          <div className="mt-2 sm:mt-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={loading}
+              className="flex items-center gap-2"
+            >
+              <RefreshCcw className="h-4 w-4" />
+              {loading ? '새로고침 중...' : '새로고침'}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="flex items-center space-x-2 mb-6">
@@ -254,7 +280,7 @@ export function UserProgressManagement() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge 
+                          <Badge
                             variant={stats.completedVideos > 0 ? "default" : "secondary"}
                             className={stats.completedVideos > 0 ? "bg-green-600" : ""}
                           >
@@ -319,7 +345,7 @@ export function UserProgressManagement() {
                   {getUserProgress(selectedUser).map((progress, index) => {
                     const video = videos[progress.videoId];
                     const category = categories[progress.categoryId];
-                    
+
                     return (
                       <TableRow key={index}>
                         <TableCell>

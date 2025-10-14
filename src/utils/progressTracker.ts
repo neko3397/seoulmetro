@@ -27,7 +27,7 @@ export const saveProgress = async (
   watchTime: number
 ): Promise<void> => {
   const userId = getUserId();
-  
+
   // Always save to localStorage for now
   const localKey = `progress_${videoId}`;
   const progressData = {
@@ -40,29 +40,30 @@ export const saveProgress = async (
   };
   localStorage.setItem(localKey, JSON.stringify(progressData));
 
-  // Try to save to backend if properly configured
-  if (projectId !== 'placeholder-project-id' && publicAnonKey !== 'placeholder-anon-key') {
-    try {
-      await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/progress`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${publicAnonKey}`
-          },
-          body: JSON.stringify({
-            userId,
-            videoId,
-            categoryId,
-            progress,
-            watchTime
-          })
-        }
-      );
-    } catch (error) {
-      console.log('Backend not available, using localStorage only:', error);
-    }
+  // Try to save to backend; fall back silently on failure
+  try {
+    const v = Date.now();
+    await fetch(
+      `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/progress?v=${v}`,
+      {
+        method: 'POST',
+        cache: 'no-store',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${publicAnonKey}`,
+          'Cache-Control': 'no-cache'
+        },
+        body: JSON.stringify({
+          userId,
+          videoId,
+          categoryId,
+          progress,
+          watchTime
+        })
+      }
+    );
+  } catch (error) {
+    console.log('Backend not available, using localStorage only:', error);
   }
 };
 
@@ -81,9 +82,23 @@ export const getLocalProgress = (videoId: string): ProgressData | null => {
 // Get user's progress from backend
 export const getUserProgress = async (): Promise<ProgressData[]> => {
   const userId = getUserId();
-  
-  // If backend is not configured, return localStorage data
-  if (projectId === 'placeholder-project-id' || publicAnonKey === 'placeholder-anon-key') {
+  try {
+    const response = await fetch(
+      `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/progress/${userId}`,
+      {
+        cache: 'no-store',
+        headers: {
+          'Authorization': `Bearer ${publicAnonKey}`,
+          'Cache-Control': 'no-cache'
+        }
+      }
+    );
+
+    const data = await response.json();
+    return data.progress || [];
+  } catch (error) {
+    console.error('Error getting user progress (fallback to local):', error);
+    // Fallback to localStorage data
     const progressData: ProgressData[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
@@ -93,28 +108,11 @@ export const getUserProgress = async (): Promise<ProgressData[]> => {
           if (data.userId === userId) {
             progressData.push(data);
           }
-        } catch (error) {
-          console.error('Error parsing localStorage progress:', error);
+        } catch (e) {
+          console.error('Error parsing localStorage progress:', e);
         }
       }
     }
     return progressData;
-  }
-  
-  try {
-    const response = await fetch(
-      `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/progress/${userId}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${publicAnonKey}`
-        }
-      }
-    );
-    
-    const data = await response.json();
-    return data.progress || [];
-  } catch (error) {
-    console.error('Error getting user progress:', error);
-    return [];
   }
 };

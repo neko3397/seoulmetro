@@ -437,11 +437,27 @@ app.post("/make-server-a8898ff1/upload-video", async (c: any) => {
 app.post("/make-server-a8898ff1/progress", async (c: any) => {
   try {
     const body = await c.req.json();
-    const { userId, videoId, categoryId, progress } = body;
+    const { userId, videoId, categoryId, progress, watchTime } = body;
     if (!userId || !videoId) return c.json({ error: "userId, videoId가 필요합니다." }, 400);
     const key = `progress_${userId}_${videoId}`;
-    await kv.set(key, { userId, videoId, categoryId, progress, updatedAt: new Date().toISOString() });
-    return c.json({ success: true });
+    const nowIso = new Date().toISOString();
+    const record = {
+      userId,
+      videoId,
+      categoryId,
+      progress, // percentage 0-100
+      watchTime: typeof watchTime === 'number' ? watchTime : 0, // seconds
+      lastWatched: nowIso,
+      updatedAt: nowIso,
+    } as const;
+    await kv.set(key, record);
+    return c.json(
+      { success: true },
+      200,
+      {
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+      }
+    );
   } catch (error) {
     console.error("Error setting progress:", error);
     return c.json({ error: "진행률 저장 중 오류가 발생했습니다." }, 500);
@@ -457,7 +473,13 @@ app.get("/make-server-a8898ff1/progress/:userId", async (c: any) => {
       const progress = await kv.get(key);
       if (progress) progressData.push(progress);
     }
-    return c.json({ progress: progressData });
+    return c.json(
+      { progress: progressData },
+      200,
+      {
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+      }
+    );
   } catch (error) {
     console.error("Error getting progress:", error);
     return c.json({ error: "진행률 조회 중 오류가 발생했습니다." }, 500);
@@ -475,7 +497,11 @@ app.get("/make-server-a8898ff1/admin/progress", async (c: any) => {
       const progress = await kv.get(key);
       if (progress) allProgress.push(progress);
     }
-    return c.json({ progress: allProgress });
+    return c.json(
+      { progress: allProgress },
+      200,
+      { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" }
+    );
   } catch (error) {
     console.error("Error getting all progress:", error);
     return c.json({ error: "전체 진행률 조회 중 오류가 발생했습니다." }, 500);
