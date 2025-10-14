@@ -269,7 +269,6 @@ export default function App() {
                   뒤로
                 </Button>
               )}
-
               <div className="flex items-center gap-2">
                 <img src={logo} alt="Logo" className="w-8 h-8 object-contain self-center" />
                 <h1>
