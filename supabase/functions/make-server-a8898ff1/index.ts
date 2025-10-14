@@ -437,12 +437,14 @@ app.post("/make-server-a8898ff1/upload-video", async (c: any) => {
 app.post("/make-server-a8898ff1/progress", async (c: any) => {
   try {
     const body = await c.req.json();
-    const { userId, videoId, categoryId, progress, watchTime } = body;
+    const { userId, videoId, categoryId, progress, watchTime, userName, employeeId } = body;
     if (!userId || !videoId) return c.json({ error: "userId, videoId가 필요합니다." }, 400);
     const key = `progress_${userId}_${videoId}`;
     const nowIso = new Date().toISOString();
     const record = {
       userId,
+      userName: userName || '',
+      employeeId: employeeId || '',
       videoId,
       categoryId,
       progress, // percentage 0-100
@@ -505,6 +507,167 @@ app.get("/make-server-a8898ff1/admin/progress", async (c: any) => {
   } catch (error) {
     console.error("Error getting all progress:", error);
     return c.json({ error: "전체 진행률 조회 중 오류가 발생했습니다." }, 500);
+  }
+});
+
+// Get all users
+app.get("/make-server-a8898ff1/users", async (c: any) => {
+  try {
+    const users = await kv.get("users_list") || [];
+    return c.json(
+      { users },
+      200,
+      { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" }
+    );
+  } catch (error) {
+    console.error("Error getting users:", error);
+    return c.json({ error: "사용자 목록 조회 중 오류가 발생했습니다." }, 500);
+  }
+});
+
+// Create or update user
+app.post("/make-server-a8898ff1/users", async (c: any) => {
+  try {
+    const { userId, name, employeeId, department } = await c.req.json();
+
+    if (!userId || !name || !employeeId) {
+      return c.json({ error: "사용자 ID, 이름, 사번은 필수입니다." }, 400);
+    }
+
+    const users = await kv.get("users_list") || [];
+    const existingIndex = users.findIndex((u: any) => u.id === userId);
+
+    const userData = {
+      id: userId,
+      name,
+      employeeId,
+      department: department || "",
+      createdAt: existingIndex === -1 ? new Date().toISOString() : users[existingIndex].createdAt,
+      updatedAt: new Date().toISOString()
+    };
+
+    if (existingIndex === -1) {
+      users.push(userData);
+    } else {
+      users[existingIndex] = userData;
+    }
+
+    await kv.set("users_list", users);
+
+    return c.json(
+      { success: true, user: userData },
+      200,
+      { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" }
+    );
+  } catch (error) {
+    console.error("Error creating/updating user:", error);
+    return c.json({ error: "사용자 정보 저장 중 오류가 발생했습니다." }, 500);
+  }
+});
+
+// Video Management Endpoints
+
+// Create video
+app.post("/make-server-a8898ff1/videos", async (c: any) => {
+  try {
+    const { categoryId, video } = await c.req.json();
+
+    if (!categoryId || !video) {
+      return c.json({ error: "카테고리 ID와 비디오 정보가 필요합니다." }, 400);
+    }
+
+    // Generate unique video ID
+    const videoId = `${categoryId}_${Date.now()}`;
+    const newVideo = {
+      ...video,
+      id: videoId,
+      createdAt: new Date().toISOString(),
+    };
+
+    // Get existing videos for category
+    const videosKey = `videos_${categoryId}`;
+    const existingVideos = (await kv.get(videosKey)) || [];
+
+    // Add new video
+    existingVideos.push(newVideo);
+
+    // Save updated videos list
+    await kv.set(videosKey, existingVideos);
+
+    return c.json(
+      { success: true, video: newVideo },
+      200,
+      { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" }
+    );
+  } catch (error) {
+    console.error("Error creating video:", error);
+    return c.json({ error: "비디오 생성 중 오류가 발생했습니다." }, 500);
+  }
+});
+
+// Update video
+app.put("/make-server-a8898ff1/videos/:categoryId/:videoId", async (c: any) => {
+  try {
+    const categoryId = c.req.param("categoryId");
+    const videoId = c.req.param("videoId");
+    const updatedVideo = await c.req.json();
+
+    const videosKey = `videos_${categoryId}`;
+    const existingVideos = (await kv.get(videosKey)) || [];
+
+    const videoIndex = existingVideos.findIndex((v: any) => v.id === videoId);
+    if (videoIndex === -1) {
+      return c.json({ error: "비디오를 찾을 수 없습니다." }, 404);
+    }
+
+    // Update video with new data
+    existingVideos[videoIndex] = {
+      ...existingVideos[videoIndex],
+      ...updatedVideo,
+      id: videoId,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await kv.set(videosKey, existingVideos);
+
+    return c.json(
+      { success: true, video: existingVideos[videoIndex] },
+      200,
+      { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" }
+    );
+  } catch (error) {
+    console.error("Error updating video:", error);
+    return c.json({ error: "비디오 수정 중 오류가 발생했습니다." }, 500);
+  }
+});
+
+// Delete video
+app.delete("/make-server-a8898ff1/videos/:categoryId/:videoId", async (c: any) => {
+  try {
+    const categoryId = c.req.param("categoryId");
+    const videoId = c.req.param("videoId");
+
+    const videosKey = `videos_${categoryId}`;
+    const existingVideos = (await kv.get(videosKey)) || [];
+
+    const videoIndex = existingVideos.findIndex((v: any) => v.id === videoId);
+    if (videoIndex === -1) {
+      return c.json({ error: "비디오를 찾을 수 없습니다." }, 404);
+    }
+
+    // Remove video from array
+    existingVideos.splice(videoIndex, 1);
+
+    await kv.set(videosKey, existingVideos);
+
+    return c.json(
+      { success: true, message: "비디오가 삭제되었습니다." },
+      200,
+      { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" }
+    );
+  } catch (error) {
+    console.error("Error deleting video:", error);
+    return c.json({ error: "비디오 삭제 중 오류가 발생했습니다." }, 500);
   }
 });
 

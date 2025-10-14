@@ -267,25 +267,51 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
         : `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/videos`;
 
       const method = editingVideo ? 'PUT' : 'POST';
-      const body = {
-        ...formData,
-        videoType: uploadMethod,
-        videoUrl: uploadMethod === 'local' ? videoUrl : undefined,
-        categoryId: !editingVideo ? selectedCategory : undefined
-      };
 
-      // Remove empty youtube fields for local videos
-      if (uploadMethod === 'local') {
-        delete body.youtubeId;
+      let body;
+      if (editingVideo) {
+        // For PUT requests, send the video data directly
+        body = {
+          ...formData,
+          videoType: uploadMethod,
+          videoUrl: uploadMethod === 'local' ? videoUrl : undefined,
+        };
+
+        // Remove empty youtube fields for local videos
+        if (uploadMethod === 'local') {
+          const { youtubeId, ...bodyWithoutYoutube } = body as any;
+          body = bodyWithoutYoutube;
+        } else {
+          const { videoUrl, ...bodyWithoutVideo } = body as any;
+          body = bodyWithoutVideo;
+        }
       } else {
-        delete body.videoUrl;
+        // For POST requests, structure as expected by API
+        let videoData: any = {
+          ...formData,
+          videoType: uploadMethod,
+        };
+
+        // Add appropriate video source
+        if (uploadMethod === 'local') {
+          videoData.videoUrl = videoUrl;
+        } else {
+          videoData.youtubeId = formData.youtubeId;
+        }
+
+        body = {
+          categoryId: selectedCategory,
+          video: videoData
+        };
       }
 
       const response = await fetch(url, {
         method,
+        cache: 'no-store',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${publicAnonKey}`, cache: 'no-store',
+          'Authorization': `Bearer ${publicAnonKey}`,
+          'Cache-Control': 'no-cache'
         },
         body: JSON.stringify(body)
       });
@@ -322,8 +348,10 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
         `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/videos/${selectedCategory}/${videoId}`,
         {
           method: 'DELETE',
+          cache: 'no-store',
           headers: {
-            'Authorization': `Bearer ${publicAnonKey}`
+            'Authorization': `Bearer ${publicAnonKey}`,
+            'Cache-Control': 'no-cache'
           }
         }
       );

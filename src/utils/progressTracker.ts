@@ -27,9 +27,24 @@ export const saveProgress = async (
   watchTime: number
 ): Promise<void> => {
   const userId = getUserId();
+  // 사용자 정보 가져오기
+  let userName = '';
+  let employeeId = '';
+  try {
+    const currentUser = localStorage.getItem('currentUser');
+    if (currentUser) {
+      const parsed = JSON.parse(currentUser);
+      userName = parsed.name || '';
+      employeeId = parsed.employeeId || '';
+    }
+  } catch (e) {
+    console.warn('currentUser 파싱 오류:', e);
+  }
 
   console.log('💾 progressTracker.saveProgress called:', {
     userId,
+    userName,
+    employeeId,
     videoId,
     categoryId,
     progress,
@@ -40,6 +55,8 @@ export const saveProgress = async (
   const localKey = `progress_${videoId}`;
   const progressData = {
     userId,
+    userName,
+    employeeId,
     videoId,
     categoryId,
     progress,
@@ -64,6 +81,8 @@ export const saveProgress = async (
         },
         body: JSON.stringify({
           userId,
+          userName,
+          employeeId,
           videoId,
           categoryId,
           progress,

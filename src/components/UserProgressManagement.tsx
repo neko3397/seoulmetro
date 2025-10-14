@@ -28,10 +28,18 @@ interface CategoryInfo {
   title: string;
 }
 
+interface UserInfo {
+  id: string;
+  name: string;
+  employeeId: string;
+  department?: string;
+}
+
 export function UserProgressManagement() {
   const [allProgress, setAllProgress] = useState<UserProgress[]>([]);
   const [videos, setVideos] = useState<{ [key: string]: VideoInfo }>({});
   const [categories, setCategories] = useState<{ [key: string]: CategoryInfo }>({});
+  const [users, setUsers] = useState<{ [key: string]: UserInfo }>({});
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
@@ -86,6 +94,26 @@ export function UserProgressManagement() {
       setCategories(categoriesMap);
       setVideos(videosMap);
 
+      // Load users data
+      const usersResponse = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/users?v=${v}`,
+        {
+          cache: 'no-store',
+          headers: {
+            'Authorization': `Bearer ${publicAnonKey}`,
+            'Cache-Control': 'no-cache'
+          }
+        }
+      );
+      const usersData = await usersResponse.json();
+      console.log('👥 Users data loaded:', usersData);
+
+      const usersMap: { [key: string]: UserInfo } = {};
+      for (const user of usersData.users || []) {
+        usersMap[user.id] = user;
+      }
+      setUsers(usersMap);
+
       // Load progress data
       const progressResponse = await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/admin/progress?v=${v}`,
@@ -115,6 +143,11 @@ export function UserProgressManagement() {
         'safety_1': { id: 'safety_1', title: '지하철 안전운행 기본 수칙', duration: '8:20' }
       };
 
+      const mockUsers = {
+        'demo_user_1': { id: 'demo_user_1', name: '김철수', employeeId: 'EMP001', department: '운행팀' },
+        'demo_user_2': { id: 'demo_user_2', name: '이영희', employeeId: 'EMP002', department: '안전팀' }
+      };
+
       const mockProgress = [
         {
           userId: 'demo_user_1',
@@ -136,6 +169,7 @@ export function UserProgressManagement() {
 
       setCategories(mockCategories);
       setVideos(mockVideos);
+      setUsers(mockUsers);
       setAllProgress(mockProgress);
       console.log('⚠️ Using fallback mock data');
     } finally {
@@ -201,10 +235,24 @@ export function UserProgressManagement() {
     return new Date(dateString).toLocaleString('ko-KR');
   };
 
+  const getUserDisplayName = (userId: string) => {
+    const user = users[userId];
+    if (user) {
+      return `${user.name} (${user.employeeId})`;
+    }
+    return userId; // fallback to user ID if user info not found
+  };
+
   const userStats = getUserStats();
-  const filteredUsers = Object.keys(userStats).filter(userId =>
-    userId.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredUsers = Object.keys(userStats).filter(userId => {
+    const user = users[userId];
+    const searchLower = searchTerm.toLowerCase();
+    return (
+      userId.toLowerCase().includes(searchLower) ||
+      (user?.name && user.name.toLowerCase().includes(searchLower)) ||
+      (user?.employeeId && user.employeeId.toLowerCase().includes(searchLower))
+    );
+  });
 
   if (loading) {
     return (
@@ -246,7 +294,7 @@ export function UserProgressManagement() {
           <div className="flex items-center space-x-2 mb-6">
             <Search className="h-4 w-4 text-gray-400" />
             <Input
-              placeholder="사용자 ID로 검색..."
+              placeholder="사용자 이름 또는 사번으로 검색..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="max-w-sm"
@@ -257,7 +305,7 @@ export function UserProgressManagement() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>사용자 ID</TableHead>
+                  <TableHead>사용자</TableHead>
                   <TableHead>시청 영상 수</TableHead>
                   <TableHead>완료 영상 수</TableHead>
                   <TableHead>평균 진행률</TableHead>
@@ -277,7 +325,9 @@ export function UserProgressManagement() {
                     const stats = userStats[userId];
                     return (
                       <TableRow key={userId}>
-                        <TableCell className="font-medium">{userId}</TableCell>
+                        <TableCell className="font-medium">
+                          {getUserDisplayName(userId)}
+                        </TableCell>
                         <TableCell>
                           <div className="flex items-center">
                             <PlayCircle className="h-4 w-4 mr-1 text-blue-600" />
@@ -329,7 +379,7 @@ export function UserProgressManagement() {
       {selectedUser && (
         <Card>
           <CardHeader>
-            <CardTitle>사용자 상세 시청 기록: {selectedUser}</CardTitle>
+            <CardTitle>사용자 상세 시청 기록: {getUserDisplayName(selectedUser)}</CardTitle>
             <CardDescription>
               개별 영상별 시청 진행률과 시간을 확인할 수 있습니다.
             </CardDescription>
