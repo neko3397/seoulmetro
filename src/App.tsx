@@ -276,12 +276,6 @@ export default function App() {
                   서울교통공사 동대문승무사업소 Learning Hub
                 </h1>
               </div>
-
-              {currentView === "videoPlayer" && selectedVideo && (
-                <div className="text-muted-foreground">
-                  / {getCurrentTopic()?.title} / {selectedVideo.title}
-                </div>
-              )}
             </div>
           </div>
         </div>
