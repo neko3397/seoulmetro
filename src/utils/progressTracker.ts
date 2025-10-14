@@ -28,6 +28,14 @@ export const saveProgress = async (
 ): Promise<void> => {
   const userId = getUserId();
 
+  console.log('💾 progressTracker.saveProgress called:', {
+    userId,
+    videoId,
+    categoryId,
+    progress,
+    watchTime
+  });
+
   // Always save to localStorage for now
   const localKey = `progress_${videoId}`;
   const progressData = {
@@ -39,11 +47,12 @@ export const saveProgress = async (
     lastWatched: new Date().toISOString()
   };
   localStorage.setItem(localKey, JSON.stringify(progressData));
-
-  // Try to save to backend; fall back silently on failure
+  console.log('✅ Saved to localStorage with key:', localKey);  // Try to save to backend; fall back silently on failure
   try {
     const v = Date.now();
-    await fetch(
+    console.log('🌐 Attempting backend save to:', `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/progress?v=${v}`);
+
+    const response = await fetch(
       `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/progress?v=${v}`,
       {
         method: 'POST',
@@ -62,8 +71,14 @@ export const saveProgress = async (
         })
       }
     );
+
+    if (response.ok) {
+      console.log('✅ Backend save successful');
+    } else {
+      console.error('❌ Backend save failed with status:', response.status);
+    }
   } catch (error) {
-    console.log('Backend not available, using localStorage only:', error);
+    console.error('❌ Backend save error:', error);
   }
 };
 

@@ -134,17 +134,25 @@ export const VideoPlayer = ({ video, categoryId }: VideoPlayerProps) => {
   }, [video.videoType, video.videoUrl]);
 
   const startProgressTracking = () => {
+    console.log('🎬 Starting progress tracking for video:', video.id, 'categoryId:', categoryId);
     stopProgressTracking();
-    
+
     progressUpdateRef.current = setInterval(() => {
       let currentSeconds = 0;
-      
+
       if (video.videoType === 'youtube' && playerRef.current && playerRef.current.getCurrentTime) {
         currentSeconds = playerRef.current.getCurrentTime();
       } else if (video.videoType === 'local' && videoRef.current) {
         currentSeconds = videoRef.current.currentTime;
       }
-      
+
+      console.log('📊 Progress update:', {
+        videoId: video.id,
+        currentSeconds: Math.floor(currentSeconds),
+        duration: video.duration,
+        categoryId
+      });
+
       updateProgress(video.id, Math.floor(currentSeconds), video.duration, categoryId);
     }, 5000); // 5초마다 업데이트
   };
@@ -159,7 +167,7 @@ export const VideoPlayer = ({ video, categoryId }: VideoPlayerProps) => {
   // 로컬 비디오 컨트롤 함수들
   const togglePlayPause = () => {
     if (!videoRef.current) return;
-    
+
     if (isPlaying) {
       videoRef.current.pause();
     } else {
@@ -184,7 +192,7 @@ export const VideoPlayer = ({ video, categoryId }: VideoPlayerProps) => {
 
   const toggleFullscreen = () => {
     if (!videoRef.current) return;
-    
+
     if (document.fullscreenElement) {
       document.exitFullscreen();
     } else {
@@ -225,7 +233,7 @@ export const VideoPlayer = ({ video, categoryId }: VideoPlayerProps) => {
         className="w-full h-full object-contain"
         onClick={togglePlayPause}
       />
-      
+
       {/* 커스텀 컨트롤 */}
       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 opacity-0 group-hover:opacity-100 transition-opacity">
         {/* 진행률 슬라이더 */}
@@ -242,7 +250,7 @@ export const VideoPlayer = ({ video, categoryId }: VideoPlayerProps) => {
             <span>{formatTime(duration)}</span>
           </div>
         </div>
-        
+
         {/* 컨트롤 버튼들 */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -254,7 +262,7 @@ export const VideoPlayer = ({ video, categoryId }: VideoPlayerProps) => {
             >
               {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
             </Button>
-            
+
             <Button
               variant="ghost"
               size="sm"
@@ -263,7 +271,7 @@ export const VideoPlayer = ({ video, categoryId }: VideoPlayerProps) => {
             >
               <RotateCcw className="w-4 h-4" />
             </Button>
-            
+
             <div className="flex items-center gap-2">
               <Button
                 variant="ghost"
@@ -273,7 +281,7 @@ export const VideoPlayer = ({ video, categoryId }: VideoPlayerProps) => {
               >
                 {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
               </Button>
-              
+
               <div className="w-20">
                 <Slider
                   value={[isMuted ? 0 : volume]}
@@ -285,7 +293,7 @@ export const VideoPlayer = ({ video, categoryId }: VideoPlayerProps) => {
               </div>
             </div>
           </div>
-          
+
           <Button
             variant="ghost"
             size="sm"
@@ -296,7 +304,7 @@ export const VideoPlayer = ({ video, categoryId }: VideoPlayerProps) => {
           </Button>
         </div>
       </div>
-      
+
       {/* 중앙 재생 버튼 (일시정지 상태일 때) */}
       {!isPlaying && (
         <div className="absolute inset-0 flex items-center justify-center">

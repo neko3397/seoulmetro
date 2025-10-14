@@ -41,6 +41,7 @@ export function UserProgressManagement() {
   }, []);
 
   const loadData = async () => {
+    console.log('📊 UserProgressManagement: Starting data load...');
     try {
       setLoading(true);
       const v = Date.now();
@@ -57,11 +58,10 @@ export function UserProgressManagement() {
         }
       );
       const categoriesData = await categoriesResponse.json();
+      console.log('📋 Categories loaded:', categoriesData);
 
       const categoriesMap: { [key: string]: CategoryInfo } = {};
-      const videosMap: { [key: string]: VideoInfo } = {};
-
-      // Load videos for each category
+      const videosMap: { [key: string]: VideoInfo } = {};      // Load videos for each category
       for (const category of categoriesData.categories || []) {
         categoriesMap[category.id] = category;
 
@@ -76,6 +76,7 @@ export function UserProgressManagement() {
           }
         );
         const videosData = await videosResponse.json();
+        console.log(`🎥 Videos for ${category.id}:`, videosData);
 
         for (const video of videosData.videos || []) {
           videosMap[video.id] = video;
@@ -97,10 +98,12 @@ export function UserProgressManagement() {
         }
       );
       const progressData = await progressResponse.json();
+      console.log('📊 Progress data loaded:', progressData);
+      console.log('📊 Number of progress records:', progressData.progress?.length || 0);
 
       setAllProgress(progressData.progress || []);
     } catch (error) {
-      console.error('Error loading data:', error);
+      console.error('❌ Error loading data:', error);
       // Fallback to demo mode
       const mockCategories = {
         'fire': { id: 'fire', title: '화재발생 시 대응요령' },
@@ -134,8 +137,10 @@ export function UserProgressManagement() {
       setCategories(mockCategories);
       setVideos(mockVideos);
       setAllProgress(mockProgress);
+      console.log('⚠️ Using fallback mock data');
     } finally {
       setLoading(false);
+      console.log('✅ UserProgressManagement: Data loading completed');
     }
   };
 

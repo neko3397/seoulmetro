@@ -49,6 +49,15 @@ export const useWatchProgress = () => {
     const completed = watchedSeconds >= totalDuration * 0.9; // 90% 이상 시청 시 완료로 간주
     const progressPercentage = Math.min((watchedSeconds / totalDuration) * 100, 100);
 
+    console.log('💾 Saving progress:', {
+      videoId,
+      watchedSeconds,
+      totalDuration,
+      progressPercentage: progressPercentage.toFixed(1) + '%',
+      categoryId,
+      completed
+    });
+
     const newProgress: WatchProgress = {
       videoId,
       watchedSeconds,
@@ -62,18 +71,21 @@ export const useWatchProgress = () => {
     };
 
     saveProgressToStorage(updated);
+    console.log('✅ Saved to localStorage');
 
     // Save to backend if categoryId is provided
     if (categoryId) {
       try {
+        console.log('🌐 Attempting backend save...');
         await saveProgress(videoId, categoryId, progressPercentage, watchedSeconds);
+        console.log('✅ Backend save successful');
       } catch (error) {
-        console.error('Failed to save progress to backend:', error);
+        console.error('❌ Failed to save progress to backend:', error);
       }
+    } else {
+      console.log('⚠️ No categoryId provided, skipping backend save');
     }
-  }, [progressData, saveProgress]);
-
-  // 특정 영상의 진행률 가져오기
+  }, [progressData, saveProgress]);  // 특정 영상의 진행률 가져오기
   const getProgress = useCallback((videoId: string): WatchProgress | null => {
     return progressData[videoId] || null;
   }, [progressData]);
