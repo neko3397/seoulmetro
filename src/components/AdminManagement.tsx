@@ -43,7 +43,7 @@ export function AdminManagement({ currentAdmin }: AdminManagementProps) {
         `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/admin/list`,
         {
           headers: {
-            'Authorization': `Bearer ${publicAnonKey}`
+            'Authorization': `Bearer ${publicAnonKey}`, cache: 'no-store',
           }
         }
       );
@@ -92,7 +92,7 @@ export function AdminManagement({ currentAdmin }: AdminManagementProps) {
         method,
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${publicAnonKey}`
+          'Authorization': `Bearer ${publicAnonKey}`, cache: 'no-store',
         },
         body: JSON.stringify(formData)
       });
@@ -131,7 +131,7 @@ export function AdminManagement({ currentAdmin }: AdminManagementProps) {
         {
           method: 'DELETE',
           headers: {
-            'Authorization': `Bearer ${publicAnonKey}`
+            'Authorization': `Bearer ${publicAnonKey}`, cache: 'no-store',
           }
         }
       );
@@ -223,7 +223,7 @@ export function AdminManagement({ currentAdmin }: AdminManagementProps) {
                       required
                     />
                   </div>
-                  
+
                   <div>
                     <Label htmlFor="employeeId">사번</Label>
                     <Input
@@ -234,7 +234,7 @@ export function AdminManagement({ currentAdmin }: AdminManagementProps) {
                       required
                     />
                   </div>
-                  
+
                   <div>
                     <Label htmlFor="password">
                       비밀번호 {editingAdmin && <span className="text-sm text-gray-500">(변경하지 않으려면 비워두세요)</span>}
@@ -305,7 +305,7 @@ export function AdminManagement({ currentAdmin }: AdminManagementProps) {
                       </TableCell>
                       <TableCell>{admin.employeeId}</TableCell>
                       <TableCell>
-                        <Badge 
+                        <Badge
                           variant={admin.isMainAdmin ? "default" : "secondary"}
                           className={admin.isMainAdmin ? "bg-blue-600" : ""}
                         >

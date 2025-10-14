@@ -99,7 +99,7 @@ export default function App() {
         {
           headers: {
             'Authorization': `Bearer ${publicAnonKey}`
-          }
+          }, cache: 'no-store',
         }
       );
 
@@ -118,7 +118,7 @@ export default function App() {
           const videoResponse = await fetch(
             `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/videos/${category.id}`,
             {
-              headers: { 'Authorization': `Bearer ${publicAnonKey}` }
+              headers: { 'Authorization': `Bearer ${publicAnonKey}` }, cache: 'no-store',
             }
           );
           if (videoResponse.ok) {
@@ -203,7 +203,7 @@ export default function App() {
       const response = await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/videos/${categoryId}`,
         {
-          headers: { 'Authorization': `Bearer ${publicAnonKey}` }
+          headers: { 'Authorization': `Bearer ${publicAnonKey}` }, cache: 'no-store',
         }
       );
       if (!response.ok) throw new Error('Failed to fetch videos');

@@ -78,7 +78,7 @@ export function CategoryManagement({ onStatsUpdate }: CategoryManagementProps) {
         headers: {
           'Authorization': `Bearer ${publicAnonKey}`
           // 'Content-Type'은 FormData 사용 시 자동 설정됨
-        },
+        }, cache: 'no-store',
         body: formData
       });
 
@@ -126,7 +126,7 @@ export function CategoryManagement({ onStatsUpdate }: CategoryManagementProps) {
         {
           headers: {
             'Authorization': `Bearer ${publicAnonKey}`
-          }
+          }, cache: 'no-store',
         }
       );
 
@@ -203,7 +203,7 @@ export function CategoryManagement({ onStatsUpdate }: CategoryManagementProps) {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${publicAnonKey}`
-        },
+        }, cache: 'no-store',
         body: JSON.stringify(submitData)
       });
 
@@ -247,7 +247,7 @@ export function CategoryManagement({ onStatsUpdate }: CategoryManagementProps) {
         {
           method: 'DELETE',
           headers: {
-            'Authorization': `Bearer ${publicAnonKey}`
+            'Authorization': `Bearer ${publicAnonKey}`, cache: 'no-store',
           }
         }
       );

@@ -71,7 +71,7 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
         `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/categories`,
         {
           headers: {
-            'Authorization': `Bearer ${publicAnonKey}`
+            'Authorization': `Bearer ${publicAnonKey}`, cache: 'no-store',
           }
         }
       );
@@ -82,7 +82,7 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
 
       const data = await response.json();
       setCategories(data.categories || []);
-      
+
       if (data.categories && data.categories.length > 0 && !selectedCategory) {
         setSelectedCategory(data.categories[0].id);
       }
@@ -109,7 +109,7 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
         `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/videos/${categoryId}`,
         {
           headers: {
-            'Authorization': `Bearer ${publicAnonKey}`
+            'Authorization': `Bearer ${publicAnonKey}`, cache: 'no-store',
           }
         }
       );
@@ -153,7 +153,7 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
         ],
         'emergency': []
       };
-      
+
       setVideos(prev => ({
         ...prev,
         [categoryId]: mockVideos[categoryId] || []
@@ -169,15 +169,15 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
         alert('비디오 파일만 업로드 가능합니다.');
         return;
       }
-      
+
       // Check file size (max 100MB)
       if (file.size > 100 * 1024 * 1024) {
         alert('파일 크기는 100MB를 초과할 수 없습니다.');
         return;
       }
-      
+
       setSelectedFile(file);
-      
+
       // Auto-detect duration using video element
       const video = document.createElement('video');
       video.src = URL.createObjectURL(file);
@@ -209,7 +209,7 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
         {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${publicAnonKey}`
+            'Authorization': `Bearer ${publicAnonKey}`, cache: 'no-store',
           },
           body: formData
         }
@@ -240,7 +240,7 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
       alert('YouTube URL 또는 ID를 입력해주세요.');
       return;
     }
-    
+
     if (uploadMethod === 'local' && !selectedFile && !editingVideo) {
       alert('업로드할 비디오 파일을 선택해주세요.');
       return;
@@ -256,7 +256,7 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
 
     try {
       let videoUrl = '';
-      
+
       // Upload video file if local type and file selected
       if (uploadMethod === 'local' && selectedFile) {
         videoUrl = await uploadVideoFile(selectedFile);
@@ -285,7 +285,7 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
         method,
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${publicAnonKey}`
+          'Authorization': `Bearer ${publicAnonKey}`, cache: 'no-store',
         },
         body: JSON.stringify(body)
       });
@@ -308,7 +308,7 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
 
   const handleDelete = async (videoId: string) => {
     if (!selectedCategory) return;
-    
+
     if (!confirm('정말로 이 영상을 삭제하시겠습니까?')) return;
 
     // Check if backend is configured
@@ -378,7 +378,7 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
   const formatDuration = (duration: string) => {
     // If it's already in MM:SS format, return as is
     if (duration.includes(':')) return duration;
-    
+
     // If it's in seconds, convert to MM:SS
     const totalSeconds = parseInt(duration);
     if (!isNaN(totalSeconds)) {
@@ -386,7 +386,7 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
       const seconds = totalSeconds % 60;
       return `${minutes}:${seconds.toString().padStart(2, '0')}`;
     }
-    
+
     return duration;
   };
 
@@ -418,8 +418,8 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center space-x-4">
               <Label htmlFor="category-select">카테고리:</Label>
-              <Select 
-                value={selectedCategory} 
+              <Select
+                value={selectedCategory}
                 onValueChange={setSelectedCategory}
               >
                 <SelectTrigger className="w-64">
@@ -464,7 +464,7 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
                         required
                       />
                     </div>
-                    
+
                     <div>
                       <Label htmlFor="description">영상 설명</Label>
                       <Textarea
@@ -493,7 +493,7 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
                             파일 업로드
                           </TabsTrigger>
                         </TabsList>
-                        
+
                         <TabsContent value="youtube" className="space-y-4 mt-4">
                           <Alert>
                             <Info className="h-4 w-4" />
@@ -506,8 +506,8 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
                             <Input
                               id="youtubeId"
                               value={formData.youtubeId}
-                              onChange={(e) => setFormData(prev => ({ 
-                                ...prev, 
+                              onChange={(e) => setFormData(prev => ({
+                                ...prev,
                                 youtubeId: extractYouTubeId(e.target.value)
                               }))}
                               placeholder="https://www.youtube.com/watch?v=VIDEO_ID 또는 VIDEO_ID"
@@ -515,7 +515,7 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
                             />
                           </div>
                         </TabsContent>
-                        
+
                         <TabsContent value="local" className="space-y-4 mt-4">
                           <Alert>
                             <Info className="h-4 w-4" />
@@ -569,15 +569,15 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
                           )}
                         </div>
                       </div>
-                      
+
                       {editingVideo.videoType === 'youtube' && (
                         <div className="mt-4">
                           <Label htmlFor="youtubeId">YouTube 링크 또는 ID</Label>
                           <Input
                             id="youtubeId"
                             value={formData.youtubeId}
-                            onChange={(e) => setFormData(prev => ({ 
-                              ...prev, 
+                            onChange={(e) => setFormData(prev => ({
+                              ...prev,
                               youtubeId: extractYouTubeId(e.target.value)
                             }))}
                             placeholder="YouTube URL 또는 비디오 ID"
@@ -587,7 +587,7 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
                       )}
                     </div>
                   )}
-                  
+
                   <div>
                     <Label htmlFor="duration">영상 길이</Label>
                     <Input

@@ -1,4 +1,3 @@
-
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -35,20 +34,36 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        clientsClaim: true,
+        skipWaiting: true,
+        cleanupOutdatedCaches: true,
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
+            // Supabase Edge Functions: 캐시 금지(항상 네트워크)
+            urlPattern: /^https:\/\/[a-z0-9-]+\.supabase\.co\/functions\/v1\/.*$/i,
+            handler: 'NetworkOnly',
+          },
+          {
+            // Supabase REST: 최신 우선
+            urlPattern: /^https:\/\/[a-z0-9-]+\.supabase\.co\/rest\/v1\/.*$/i,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'supabase-rest',
+              networkTimeoutSeconds: 5,
+              expiration: { maxAgeSeconds: 30, maxEntries: 200 },
+            },
+          },
+          {
+            // Supabase Storage(이미지): 캐시 허용
+            urlPattern: /^https:\/\/[a-z0-9-]+\.supabase\.co\/storage\/v1\/.*$/i,
             handler: 'CacheFirst',
             options: {
-              cacheName: 'supabase-cache',
-              expiration: {
-                maxEntries: 10,
-                maxAgeSeconds: 60 * 60 * 24 * 365 // 1년
-              }
-            }
-          }
-        ]
+              cacheName: 'supabase-storage',
+              cacheableResponse: { statuses: [0, 200] },
+              expiration: { maxAgeSeconds: 60 * 60 * 24, maxEntries: 300 },
+            },
+          },
+        ],
       }
     })
   ],
