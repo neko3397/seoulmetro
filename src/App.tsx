@@ -295,7 +295,7 @@ export default function App() {
                       것을 환영합니다! 👋
                     </h1>
                     <p className="text-muted-foreground max-w-2xl mx-auto">
-                      더 안전한 지하철을 만들기 위한 학습을
+                      안전한 지하철을 만들기 위한 학습을
                       시작해보세요.
                     </p>
                     <p className="text-muted-foreground max-w-2xl mx-auto">
