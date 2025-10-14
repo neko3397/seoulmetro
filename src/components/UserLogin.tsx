@@ -157,10 +157,9 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
                 value={name}
                 onChange={(e) => {
                   // 한글만 입력 허용
-                  const value = e.target.value.replace(/[^가-힣]/g, "").slice(0, 5);
+                  const value = e.target.value;
                   setName(value);
                 }}
-                onKeyPress={handleKeyPress}
                 maxLength={5}
                 className="text-center"
               />
