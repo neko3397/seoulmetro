@@ -272,7 +272,7 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <img src={logo} alt="Logo" className="w-8 h-8 object-contain self-center" />
                 <h1>
-                  서울교통공사 동대문승무사업소 Learning Hub
+                  서울교통공사 동대문승무사업소 안전교육허브
                 </h1>
               </div>
             </div>
@@ -364,7 +364,7 @@ export default function App() {
                     topic={{
                       id: category.id,
                       title: category.title,
-                      description: category.description,
+                      description: category.subtitle,
                       thumbnail: category.image,
                       videoCount: videosByCategory[category.id]?.length || 0
                     }}

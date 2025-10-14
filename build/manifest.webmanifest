@@ -1,1 +1,25 @@
-{"name":"서울교통공사 동대문승무사업소 동그라인","short_name":"동그라인","description":"서울교통공사 동대문승무사업소 학습 관리 시스템","start_url":"/","display":"standalone","background_color":"#ffffff","theme_color":"#1f2937","lang":"en","scope":"/","icons":[{"src":"/icons/icon-192x192.png","sizes":"192x192","type":"image/png","purpose":"maskable any"},{"src":"/icons/icon-512x512.png","sizes":"512x512","type":"image/png","purpose":"maskable any"}]}
+{
+    "name": "서울교통공사 동대문승무사업소 안전교육허브",
+    "short_name": "안전교육허브",
+    "description": "서울교통공사 동대문승무사업소 학습 관리 시스템",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#ffffff",
+    "theme_color": "#1f2937",
+    "lang": "en",
+    "scope": "/",
+    "icons": [
+        {
+            "src": "/icons/icon-192x192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable any"
+        },
+        {
+            "src": "/icons/icon-512x512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable any"
+        }
+    ]
+}

@@ -11,8 +11,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icons/*.png', 'manifest.json'],
       manifest: {
-        name: '서울교통공사 동대문승무사업소 동그라인',
-        short_name: '동그라인',
+        name: '서울교통공사 동대문승무사업소 안전교육허브',
+        short_name: '안전교육허브',
         description: '서울교통공사 동대문승무사업소 학습 관리 시스템',
         theme_color: '#1f2937',
         background_color: '#ffffff',
