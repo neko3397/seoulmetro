@@ -102,6 +102,12 @@ export default defineConfig({
   build: {
     target: 'esnext',
     outDir: 'build',
+    rollupOptions: {
+      output: {
+        manualChunks: undefined,
+      },
+    },
+    assetsDir: 'assets',
   },
   server: {
     port: 3000,
