@@ -88,15 +88,6 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
       <div className="w-full max-w-md space-y-6">
         {/* 헤더 */}
         <div className="text-center space-y-4">
-          <Button
-            variant="ghost"
-            onClick={onBack}
-            className="absolute top-4 left-4 flex items-center gap-2"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            뒤로
-          </Button>
-
           <div className="flex justify-center">
             <img src={seoulMetroLogo} alt="서울교통공사 로고" className="w-24 h-24" />
           </div>
@@ -105,7 +96,7 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
               사용자 로그인
             </h1>
             <p className="text-muted-foreground">
-              서울교통공사 안전교육허브에 로그인하세요
+              동대문승무사업소 불안제로에 로그인하세요
             </p>
           </div>
         </div>
@@ -118,7 +109,7 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
               로그인 정보 입력
             </CardTitle>
             <CardDescription>
-              사번과 이름을 입력하시면 자동으로 회원가입이 완료됩니다.
+              사번과 이름을 입력하세요
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -186,7 +177,7 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
         {/* 안내 메시지 */}
         <div className="text-center text-sm text-muted-foreground">
           <p>서울교통공사 동대문승무사업소</p>
-          <p>안전교육허브</p>
+          <p>불안제로</p>
         </div>
       </div>
     </div>
