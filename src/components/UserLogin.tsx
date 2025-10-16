@@ -6,9 +6,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/
 import { Alert, AlertDescription } from "./ui/alert";
 import { User, ArrowLeft } from "lucide-react";
 import seoulMetroLogo from "../assets/logo.png"; // 타입 선언 추가 필요
+import { projectId, publicAnonKey } from "../utils/supabase/info";
+
+interface LoggedInUser {
+  employeeId: string;
+  name: string;
+  userId: string;
+  loginDate: string;
+  isNewUser: boolean;
+}
 
 interface UserLoginProps {
-  onLogin: (user: { employeeId: string; name: string }) => void;
+  onLogin: (user: LoggedInUser) => void;
   onBack: () => void;
 }
 
@@ -57,21 +66,53 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
     setIsLoading(true);
 
     try {
-      // 사용자 정보를 로컬 스토리지에 저장 (자동 회원가입)
-      const userData = {
-        employeeId: employeeId.trim(),
-        name: name.trim(),
+      const normalizedEmployeeId = employeeId.trim();
+      const normalizedName = name.trim();
+      const userStorageKey = `user_${normalizedEmployeeId}`;
+      const existingLocalUser = localStorage.getItem(userStorageKey);
+      const userId = `employee_${normalizedEmployeeId}`;
+
+      const userData: LoggedInUser = {
+        employeeId: normalizedEmployeeId,
+        name: normalizedName,
+        userId,
         loginDate: new Date().toISOString(),
-        isNewUser: !localStorage.getItem(`user_${employeeId.trim()}`)
+        isNewUser: !existingLocalUser
       };
 
-      localStorage.setItem(`user_${employeeId.trim()}`, JSON.stringify(userData));
-      localStorage.setItem('currentUser', JSON.stringify(userData));
+      const v = Date.now();
+      const response = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/users?v=${v}`,
+        {
+          method: "POST",
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${publicAnonKey}`,
+            "Cache-Control": "no-cache"
+          },
+          body: JSON.stringify({
+            userId,
+            name: normalizedName,
+            employeeId: normalizedEmployeeId
+          })
+        }
+      );
 
-      // 로그인 성공
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Failed to sync user info:", response.status, errorText);
+        throw new Error("사용자 정보를 저장하지 못했습니다.");
+      }
+
+      localStorage.setItem(userStorageKey, JSON.stringify(userData));
+      localStorage.setItem('currentUser', JSON.stringify(userData));
+      localStorage.setItem('learningHubUserId', userId);
+
       onLogin(userData);
     } catch (error) {
-      setError("로그인 중 오류가 발생했습니다. 다시 시도해주세요.");
+      console.error('User login failed:', error);
+      setError("사용자 정보를 저장하지 못했습니다. 잠시 후 다시 시도해주세요.");
     } finally {
       setIsLoading(false);
     }
@@ -85,7 +126,16 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4 relative">
-      <div className="w-full max-w-md space-y-6">
+      <div className="w-full max-w-md space-y-6 relative">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onBack}
+          className="absolute left-4 top-4 flex items-center gap-2"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          돌아가기
+        </Button>
         {/* 헤더 */}
         <div className="text-center space-y-4">
           <div className="flex justify-center">

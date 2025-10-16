@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Progress } from './ui/progress';
@@ -15,6 +15,8 @@ interface UserProgress {
   progress: number;
   watchTime: number;
   lastWatched: string;
+  userName?: string;
+  employeeId?: string;
 }
 
 interface VideoInfo {
@@ -43,6 +45,26 @@ export function UserProgressManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
+
+  const progressUserInfo = useMemo(() => {
+    const map: Record<string, { name?: string; employeeId?: string }> = {};
+
+    allProgress.forEach((progress) => {
+      if (!map[progress.userId]) {
+        map[progress.userId] = {};
+      }
+
+      if (progress.userName && !map[progress.userId].name) {
+        map[progress.userId].name = progress.userName;
+      }
+
+      if (progress.employeeId && !map[progress.userId].employeeId) {
+        map[progress.userId].employeeId = progress.employeeId;
+      }
+    });
+
+    return map;
+  }, [allProgress]);
 
   useEffect(() => {
     loadData();
@@ -238,19 +260,40 @@ export function UserProgressManagement() {
   const getUserDisplayName = (userId: string) => {
     const user = users[userId];
     if (user) {
-      return `${user.name} (${user.employeeId})`;
+      const parts = [user.name, user.employeeId ? `(${user.employeeId})` : null].filter(Boolean);
+      const formatted = parts.join(' ').trim();
+      if (formatted) {
+        return formatted;
+      }
     }
+
+    const fallback = progressUserInfo[userId];
+    if (fallback) {
+      if (fallback.name && fallback.employeeId) {
+        return `${fallback.name} (${fallback.employeeId})`;
+      }
+      if (fallback.name) {
+        return fallback.name;
+      }
+      if (fallback.employeeId) {
+        return fallback.employeeId;
+      }
+    }
+
     return userId; // fallback to user ID if user info not found
   };
 
   const userStats = getUserStats();
   const filteredUsers = Object.keys(userStats).filter(userId => {
     const user = users[userId];
+    const fallback = progressUserInfo[userId];
     const searchLower = searchTerm.toLowerCase();
     return (
       userId.toLowerCase().includes(searchLower) ||
       (user?.name && user.name.toLowerCase().includes(searchLower)) ||
-      (user?.employeeId && user.employeeId.toLowerCase().includes(searchLower))
+      (user?.employeeId && user.employeeId.toLowerCase().includes(searchLower)) ||
+      (fallback?.name && fallback.name.toLowerCase().includes(searchLower)) ||
+      (fallback?.employeeId && fallback.employeeId.toLowerCase().includes(searchLower))
     );
   });
 

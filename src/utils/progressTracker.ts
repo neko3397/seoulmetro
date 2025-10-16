@@ -11,6 +11,28 @@ export interface ProgressData {
 
 // Generate a unique user ID for the session
 export const getUserId = (): string => {
+  try {
+    const currentUserRaw = localStorage.getItem('currentUser');
+    if (currentUserRaw) {
+      const parsed = JSON.parse(currentUserRaw);
+      if (parsed?.employeeId) {
+        const normalizedEmployeeId = String(parsed.employeeId).trim();
+        if (normalizedEmployeeId) {
+          const normalizedUserId = `employee_${normalizedEmployeeId}`;
+          const storedUserId = localStorage.getItem('learningHubUserId');
+
+          if (storedUserId !== normalizedUserId) {
+            localStorage.setItem('learningHubUserId', normalizedUserId);
+          }
+
+          return normalizedUserId;
+        }
+      }
+    }
+  } catch (error) {
+    console.warn('currentUser 파싱 오류:', error);
+  }
+
   let userId = localStorage.getItem('learningHubUserId');
   if (!userId) {
     userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -34,8 +56,8 @@ export const saveProgress = async (
     const currentUser = localStorage.getItem('currentUser');
     if (currentUser) {
       const parsed = JSON.parse(currentUser);
-      userName = parsed.name || '';
-      employeeId = parsed.employeeId || '';
+      userName = (parsed.name || '').trim();
+      employeeId = (parsed.employeeId || '').trim();
     }
   } catch (e) {
     console.warn('currentUser 파싱 오류:', e);
