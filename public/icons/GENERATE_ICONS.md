@@ -18,7 +18,7 @@ convert -size 16x16 -background "#1f2937" -fill white -gravity center -font Aria
 
 ## 또는 온라인 도구 사용
 
-1. [Favicon.io](https://favicon.io/favicon-generator/)에서 "불안제로" 텍스트로 아이콘 생성
+1. [Favicon.io](https://favicon.io/favicon-generator/)에서 "안전교육허브" 텍스트로 아이콘 생성
 2. 생성된 아이콘들을 `public/icons/` 폴더에 저장
 
 ## 현재 PWA 설정 상태

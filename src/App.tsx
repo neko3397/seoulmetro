@@ -410,7 +410,7 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <img src={logo} alt="Logo" className="w-8 h-8 object-contain self-center" />
                 <h1 className="text-xl font-bold">
-                  동대문승무사업소 불안제로
+                  동대문승무사업소 안전교육허브
                 </h1>
               </div>
             </div>
@@ -432,7 +432,7 @@ export default function App() {
                         {currentUser.name}님!
                       </h1>
                       <h2 className="gemini text-xl mb-4">
-                        불안제로에 오신 것을 환영합니다! 👋
+                        안전교육허브에 오신 것을 환영합니다! 👋
                       </h2>
                       <p className="text-muted-foreground max-w-2xl mx-auto">
                         안전한 지하철을 만들기 위한 학습을

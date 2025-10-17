@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type KeyboardEvent } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -21,6 +21,35 @@ interface UserLoginProps {
   onBack: () => void;
 }
 
+const validateEmployeeAuthorization = async (employeeId: string, name: string): Promise<boolean> => {
+  try {
+    const response = await fetch(
+      `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/users/validate`,
+      {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${publicAnonKey}`,
+          "Cache-Control": "no-cache"
+        },
+        body: JSON.stringify({ employeeId, name })
+      }
+    );
+
+    if (!response.ok) {
+      console.error("Authorization validation failed with status:", response.status);
+      return false;
+    }
+
+    const data = await response.json();
+    return Boolean(data?.success);
+  } catch (error) {
+    console.error("Authorization validation error:", error);
+    return false;
+  }
+};
+
 export function UserLogin({ onLogin, onBack }: UserLoginProps) {
   const [employeeId, setEmployeeId] = useState("");
   const [name, setName] = useState("");
@@ -34,15 +63,14 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
   };
 
   // 한글 이름 유효성 검사
-  const validateName = (name: string) => {
+  const validateName = (value: string) => {
     const regex = /^[가-힣]+$/;
-    return regex.test(name) && name.length >= 2 && name.length <= 5;
+    return regex.test(value) && value.length >= 2 && value.length <= 5;
   };
 
   const handleLogin = async () => {
     setError("");
 
-    // 입력값 검증
     if (!employeeId.trim()) {
       setError("사번을 입력해주세요.");
       return;
@@ -68,6 +96,13 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
     try {
       const normalizedEmployeeId = employeeId.trim();
       const normalizedName = name.trim();
+
+      const isAuthorized = await validateEmployeeAuthorization(normalizedEmployeeId, normalizedName);
+      if (!isAuthorized) {
+        setError("등록된 사번/이름이 아닙니다. 관리자에게 문의해주세요.");
+        return;
+      }
+
       const userStorageKey = `user_${normalizedEmployeeId}`;
       const existingLocalUser = localStorage.getItem(userStorageKey);
       const userId = `employee_${normalizedEmployeeId}`;
@@ -106,19 +141,19 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
       }
 
       localStorage.setItem(userStorageKey, JSON.stringify(userData));
-      localStorage.setItem('currentUser', JSON.stringify(userData));
-      localStorage.setItem('learningHubUserId', userId);
+      localStorage.setItem("currentUser", JSON.stringify(userData));
+      localStorage.setItem("learningHubUserId", userId);
 
       onLogin(userData);
     } catch (error) {
-      console.error('User login failed:', error);
+      console.error("User login failed:", error);
       setError("사용자 정보를 저장하지 못했습니다. 잠시 후 다시 시도해주세요.");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyPress = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       handleLogin();
     }
@@ -142,11 +177,9 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
             <img src={seoulMetroLogo} alt="서울교통공사 로고" className="w-24 h-24" />
           </div>
           <div>
-            <h1 className="mb-2">
-              사용자 로그인
-            </h1>
+            <h1 className="mb-2">사용자 로그인</h1>
             <p className="text-muted-foreground">
-              동대문승무사업소 불안제로에 로그인하세요
+              동대문승무사업소 안전교육허브에 로그인하세요
             </p>
           </div>
         </div>
@@ -158,9 +191,7 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
               <User className="w-5 h-5" />
               로그인 정보 입력
             </CardTitle>
-            <CardDescription>
-              사번과 이름을 입력하세요
-            </CardDescription>
+            <CardDescription>사번과 이름을 입력하세요</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {error && (
@@ -184,9 +215,7 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
                 maxLength={8}
                 className="text-center tracking-wider"
               />
-              <p className="text-xs text-muted-foreground">
-                2로 시작하는 8자리 숫자를 입력하세요
-              </p>
+              <p className="text-xs text-muted-foreground">2로 시작하는 8자리 숫자를 입력하세요</p>
             </div>
 
             <div className="space-y-2">
@@ -196,17 +225,11 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
                 type="text"
                 placeholder="홍길동"
                 value={name}
-                onChange={(e) => {
-                  // 한글만 입력 허용
-                  const value = e.target.value;
-                  setName(value);
-                }}
+                onChange={(e) => setName(e.target.value)}
                 maxLength={5}
                 className="text-center"
               />
-              <p className="text-xs text-muted-foreground">
-                한글 이름을 입력하세요 (2-5자)
-              </p>
+              <p className="text-xs text-muted-foreground">한글 이름을 입력하세요 (2-5자)</p>
             </div>
 
             <Button
@@ -227,7 +250,7 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
         {/* 안내 메시지 */}
         <div className="text-center text-sm text-muted-foreground">
           <p>서울교통공사 동대문승무사업소</p>
-          <p>불안제로</p>
+          <p>안전교육허브</p>
         </div>
       </div>
     </div>

@@ -4,6 +4,10 @@ import { bearerAuth } from "npm:hono/bearer-auth";
 import { logger } from "npm:hono/logger";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import * as kv from "./kv_store.tsx";
+import {
+  AUTHORIZED_EMPLOYEES,
+  type AuthorizedEmployee,
+} from "./authorized_employees.ts";
 
 const app = new Hono();
 
@@ -29,6 +33,115 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
 );
+
+const AUTHORIZED_EMPLOYEES_KEY = "authorized_employees";
+const USER_RECORD_PREFIX = "user_record_";
+
+interface StoredUserRecord {
+  id: string;
+  employeeId: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  lastLoginAt: string;
+}
+
+const isAuthorizedEmployeeList = (
+  value: unknown,
+): value is AuthorizedEmployee[] =>
+  Array.isArray(value) &&
+  value.every(
+    (item) =>
+      item &&
+      typeof item === "object" &&
+      typeof (item as AuthorizedEmployee).employeeId === "string" &&
+      typeof (item as AuthorizedEmployee).name === "string",
+  );
+
+const canonicalizeEmployeeId = (employeeId: string) =>
+  employeeId.replace(/\D/g, "").trim();
+const canonicalizeEmployeeName = (name: string) =>
+  name.replace(/\s+/g, "").trim();
+
+async function initializeAuthorizedEmployees() {
+  try {
+    const existing = await kv.get(AUTHORIZED_EMPLOYEES_KEY);
+    if (isAuthorizedEmployeeList(existing)) {
+      const existingSet = new Set(
+        existing.map(
+          (employee) =>
+            `${canonicalizeEmployeeId(employee.employeeId)}:${canonicalizeEmployeeName(employee.name)}`,
+        ),
+      );
+      const newSet = new Set(
+        AUTHORIZED_EMPLOYEES.map(
+          (employee) =>
+            `${canonicalizeEmployeeId(employee.employeeId)}:${canonicalizeEmployeeName(employee.name)}`,
+        ),
+      );
+
+      let isSame = existingSet.size === newSet.size;
+      if (isSame) {
+        for (const key of newSet) {
+          if (!existingSet.has(key)) {
+            isSame = false;
+            break;
+          }
+        }
+      }
+
+      if (isSame) {
+        console.log("Authorized employees already initialized");
+        return;
+      }
+    }
+
+    await kv.set(AUTHORIZED_EMPLOYEES_KEY, AUTHORIZED_EMPLOYEES);
+    console.log(
+      `Authorized employees synced (${AUTHORIZED_EMPLOYEES.length} records)`,
+    );
+  } catch (error) {
+    console.error("Error initializing authorized employees:", error);
+  }
+}
+
+async function getAuthorizedEmployees(): Promise<AuthorizedEmployee[]> {
+  try {
+    const stored = await kv.get(AUTHORIZED_EMPLOYEES_KEY);
+    if (isAuthorizedEmployeeList(stored)) {
+      return stored;
+    }
+  } catch (error) {
+    console.warn("Failed to read authorized employees from KV:", error);
+  }
+
+  return AUTHORIZED_EMPLOYEES;
+}
+
+async function saveUserRecord(record: StoredUserRecord) {
+  await kv.set(`${USER_RECORD_PREFIX}${record.employeeId}`, record);
+}
+
+async function getUserRecord(
+  employeeId: string,
+): Promise<StoredUserRecord | null> {
+  const stored = await kv.get(`${USER_RECORD_PREFIX}${employeeId}`);
+  return stored ?? null;
+}
+
+async function getAllUserRecords(): Promise<StoredUserRecord[]> {
+  const records = await kv.getByPrefix(USER_RECORD_PREFIX);
+  return (records || [])
+    .filter(
+      (record: unknown): record is StoredUserRecord =>
+        !!record &&
+        typeof record === "object" &&
+        typeof (record as StoredUserRecord).id === "string" &&
+        typeof (record as StoredUserRecord).employeeId === "string" &&
+        typeof (record as StoredUserRecord).name === "string",
+    )
+    .sort((a, b) => a.employeeId.localeCompare(b.employeeId));
+}
 
 // Admin storage: single list under one key (migration from per-key admin_*)
 const ADMINS_KEY = "admins_list";
@@ -285,6 +398,7 @@ async function initializeImageBucket() {
 console.log("Starting server initialization...");
 (async () => {
   try {
+    await initializeAuthorizedEmployees();
     await initializeDefaultAdmin();
     await initializeDefaultData();
     await initializeVideoBucket();
@@ -539,6 +653,152 @@ app.delete("/make-server-a8898ff1/admin/:id", async (c: any) => {
     console.error("Error deleting admin:", error);
     return c.json(
       { error: "관리자 삭제 중 오류가 발생했습니다." },
+      500,
+    );
+  }
+});
+
+// Validate user authorization
+app.post("/make-server-a8898ff1/users/validate", async (c: any) => {
+  try {
+    const authHeader = c.req.header("Authorization");
+    if (!authHeader) {
+      return c.json({ success: false, error: "인증이 필요합니다." }, 401);
+    }
+
+    const { employeeId, name } = await c.req.json();
+
+    if (!employeeId || !name) {
+      return c.json(
+        {
+          success: false,
+          error: "사번과 이름을 모두 입력해주세요.",
+        },
+        400,
+      );
+    }
+
+    const normalizedEmployeeId = canonicalizeEmployeeId(employeeId);
+    const normalizedEmployeeName = canonicalizeEmployeeName(name);
+
+    if (!normalizedEmployeeId || !normalizedEmployeeName) {
+      return c.json(
+        {
+          success: false,
+          error: "사번 또는 이름 형식이 올바르지 않습니다.",
+        },
+        400,
+      );
+    }
+
+    const authorizedEmployees = await getAuthorizedEmployees();
+    const isAuthorized = authorizedEmployees.some(
+      (employee) =>
+        canonicalizeEmployeeId(employee.employeeId) ===
+          normalizedEmployeeId &&
+        canonicalizeEmployeeName(employee.name) ===
+          normalizedEmployeeName,
+    );
+
+    return c.json({ success: isAuthorized });
+  } catch (error) {
+    console.error("Error validating employee authorization:", error);
+    return c.json(
+      {
+        success: false,
+        error: "사번 검증 중 오류가 발생했습니다.",
+      },
+      500,
+    );
+  }
+});
+
+// Create or update user record
+app.post("/make-server-a8898ff1/users", async (c: any) => {
+  try {
+    const authHeader = c.req.header("Authorization");
+    if (!authHeader) {
+      return c.json({ error: "인증이 필요합니다." }, 401);
+    }
+
+    const { userId, employeeId, name } = await c.req.json();
+
+    if (!userId || !employeeId || !name) {
+      return c.json(
+        { error: "userId, 사번, 이름을 모두 전달해주세요." },
+        400,
+      );
+    }
+
+    const normalizedEmployeeId = canonicalizeEmployeeId(employeeId);
+    const normalizedEmployeeName = canonicalizeEmployeeName(name);
+    const displayName = name.trim();
+
+    if (normalizedEmployeeId.length !== 8) {
+      return c.json(
+        { error: "사번은 8자리 숫자여야 합니다." },
+        400,
+      );
+    }
+
+    if (!displayName) {
+      return c.json({ error: "이름을 입력해주세요." }, 400);
+    }
+
+    const authorizedEmployees = await getAuthorizedEmployees();
+    const isAuthorized = authorizedEmployees.some(
+      (employee) =>
+        canonicalizeEmployeeId(employee.employeeId) ===
+          normalizedEmployeeId &&
+        canonicalizeEmployeeName(employee.name) ===
+          normalizedEmployeeName,
+    );
+
+    if (!isAuthorized) {
+      return c.json(
+        { error: "승인된 사용자만 로그인할 수 있습니다." },
+        403,
+      );
+    }
+
+    const timestamp = new Date().toISOString();
+    const existingRecord = await getUserRecord(normalizedEmployeeId);
+
+    const storedRecord: StoredUserRecord = {
+      id: existingRecord?.id ?? String(userId),
+      employeeId: normalizedEmployeeId,
+      name: displayName,
+      createdAt: existingRecord?.createdAt ?? timestamp,
+      updatedAt: timestamp,
+      lastLoginAt: timestamp,
+    };
+
+    await saveUserRecord(storedRecord);
+
+    return c.json({ success: true, user: storedRecord });
+  } catch (error) {
+    console.error("Error saving user record:", error);
+    return c.json(
+      { error: "사용자 정보를 저장하지 못했습니다." },
+      500,
+    );
+  }
+});
+
+// List user records for admin dashboard
+app.get("/make-server-a8898ff1/users", async (c: any) => {
+  try {
+    const authHeader = c.req.header("Authorization");
+    if (!authHeader) {
+      return c.json({ error: "인증이 필요합니다." }, 401);
+    }
+
+    const users = await getAllUserRecords();
+    return c.json({ users });
+  } catch (error) {
+    console.error("Error fetching users:", error);
+    return c.json(
+      { error: "사용자 정보를 조회하지 못했습니다." },
       500,
     );
   }

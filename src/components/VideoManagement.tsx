@@ -22,7 +22,7 @@ interface Video {
   videoUrl?: string;
   videoType: 'youtube' | 'local';
   duration: string;
-  thumbnail: string;
+  thumbnail?: string;
   createdAt: string;
   updatedAt?: string;
 }
@@ -37,6 +37,14 @@ interface VideoManagementProps {
 }
 
 export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
+  const DEFAULT_LOCAL_THUMBNAIL = 'https://via.placeholder.com/480x270/1f2937/ffffff?text=Video';
+  const getYouTubeThumbnailUrl = (id: string) => `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
+  const resolveThumbnailForVideo = (video: Partial<Video>) => {
+    if (video.videoType === 'youtube' && video.youtubeId) {
+      return video.thumbnail || getYouTubeThumbnailUrl(video.youtubeId);
+    }
+    return video.thumbnail || DEFAULT_LOCAL_THUMBNAIL;
+  };
   const [categories, setCategories] = useState<Category[]>([]);
   const [videos, setVideos] = useState<{ [categoryId: string]: Video[] }>({});
   const [selectedCategory, setSelectedCategory] = useState<string>('');
@@ -119,44 +127,51 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
       }
 
       const data = await response.json();
+      const normalizedVideos = (data.videos || []).map((video: Video) => ({
+        ...video,
+        thumbnail: resolveThumbnailForVideo(video),
+      }));
       setVideos(prev => ({
         ...prev,
-        [categoryId]: data.videos || []
+        [categoryId]: normalizedVideos
       }));
     } catch (error) {
       console.error('Error loading videos:', error);
       // Fallback to demo mode
-      const mockVideos = {
-        'fire': [
+      const mockVideos: Record<string, Video[]> = {
+        fire: [
           {
             id: 'fire_1',
             title: '지하철 화재 발생 시 초기 대응',
             description: '지하철에서 화재가 발생했을 때 승무원이 취해야 할 초기 대응 방법을 학습합니다.',
             youtubeId: 'dQw4w9WgXcQ',
-            videoType: 'youtube' as 'youtube' | 'local',
+            videoType: 'youtube',
             duration: '5:30',
             thumbnail: 'https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg',
             createdAt: new Date().toISOString()
           }
         ],
-        'safety': [
+        safety: [
           {
             id: 'safety_1',
             title: '지하철 안전운행 기본 수칙',
             description: '지하철을 안전하게 운행하기 위한 기본적인 수칙과 절차를 학습합니다.',
             youtubeId: 'dQw4w9WgXcQ',
-            videoType: 'youtube' as 'youtube' | 'local',
+            videoType: 'youtube',
             duration: '8:20',
             thumbnail: 'https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg',
             createdAt: new Date().toISOString()
           }
         ],
-        'emergency': []
+        emergency: []
       };
 
       setVideos(prev => ({
         ...prev,
-        [categoryId]: mockVideos[categoryId] || []
+        [categoryId]: (mockVideos[categoryId] || []).map((video: Video) => ({
+          ...video,
+          thumbnail: resolveThumbnailForVideo(video)
+        }))
       }));
     }
   };
@@ -201,7 +216,7 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
     try {
       // Create FormData for file upload
       const formData = new FormData();
-      formData.append('video', file);
+      formData.append('file', file);
       formData.append('categoryId', selectedCategory);
 
       const response = await fetch(
@@ -218,7 +233,10 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
       const data = await response.json();
 
       if (data.success) {
-        return data.videoUrl;
+        if (data.url) {
+          return data.url as string;
+        }
+        throw new Error('업로드 응답에 파일 URL이 없습니다.');
       } else {
         throw new Error(data.error || '파일 업로드에 실패했습니다.');
       }
@@ -246,66 +264,70 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
       return;
     }
 
-    // Check if backend is configured
-    if (projectId === 'placeholder-project-id' || publicAnonKey === 'placeholder-anon-key') {
-      alert('데모 모드에서는 영상을 실제로 저장할 수 없습니다. 실제 배포 시 Supabase 설정이 필요합니다.');
-      setIsDialogOpen(false);
-      resetForm();
-      return;
-    }
-
     try {
-      let videoUrl = '';
+      const trimmedTitle = formData.title.trim();
+      const trimmedDescription = formData.description.trim();
+      const trimmedDuration = formData.duration.trim();
+      const sanitizedYoutubeId = uploadMethod === 'youtube'
+        ? extractYouTubeId(formData.youtubeId.trim())
+        : '';
 
-      // Upload video file if local type and file selected
-      if (uploadMethod === 'local' && selectedFile) {
-        videoUrl = await uploadVideoFile(selectedFile);
+      let resolvedVideoUrl = editingVideo?.videoUrl || '';
+      let resolvedThumbnail = editingVideo?.thumbnail || '';
+
+      if (uploadMethod === 'local') {
+        if (selectedFile) {
+          resolvedVideoUrl = await uploadVideoFile(selectedFile);
+        }
+        resolvedThumbnail = editingVideo?.thumbnail || DEFAULT_LOCAL_THUMBNAIL;
+      } else if (uploadMethod === 'youtube') {
+        if (!sanitizedYoutubeId) {
+          alert('YouTube 영상 ID를 확인해주세요.');
+          return;
+        }
+        resolvedThumbnail = getYouTubeThumbnailUrl(sanitizedYoutubeId);
       }
 
-      const url = editingVideo
+      const apiUrl = editingVideo
         ? `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/videos/${selectedCategory}/${editingVideo.id}`
         : `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/videos`;
 
       const method = editingVideo ? 'PUT' : 'POST';
 
+      const basePayload = {
+        title: trimmedTitle,
+        description: trimmedDescription,
+        duration: trimmedDuration,
+        videoType: uploadMethod,
+        thumbnail: resolvedThumbnail,
+      };
+
       let body;
       if (editingVideo) {
-        // For PUT requests, send the video data directly
-        body = {
-          ...formData,
-          videoType: uploadMethod,
-          videoUrl: uploadMethod === 'local' ? videoUrl : undefined,
-        };
-
-        // Remove empty youtube fields for local videos
+        const updatePayload: any = { ...basePayload };
         if (uploadMethod === 'local') {
-          const { youtubeId, ...bodyWithoutYoutube } = body as any;
-          body = bodyWithoutYoutube;
+          if (resolvedVideoUrl) {
+            updatePayload.videoUrl = resolvedVideoUrl;
+          }
         } else {
-          const { videoUrl, ...bodyWithoutVideo } = body as any;
-          body = bodyWithoutVideo;
+          updatePayload.youtubeId = sanitizedYoutubeId;
         }
+        body = updatePayload;
       } else {
-        // For POST requests, structure as expected by API
-        let videoData: any = {
-          ...formData,
-          videoType: uploadMethod,
-        };
-
-        // Add appropriate video source
+        const videoPayload: any = { ...basePayload };
         if (uploadMethod === 'local') {
-          videoData.videoUrl = videoUrl;
+          videoPayload.videoUrl = resolvedVideoUrl;
         } else {
-          videoData.youtubeId = formData.youtubeId;
+          videoPayload.youtubeId = sanitizedYoutubeId;
         }
 
         body = {
           categoryId: selectedCategory,
-          video: videoData
+          video: videoPayload
         };
       }
 
-      const response = await fetch(url, {
+      const response = await fetch(apiUrl, {
         method,
         cache: 'no-store',
         headers: {
@@ -336,12 +358,6 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
     if (!selectedCategory) return;
 
     if (!confirm('정말로 이 영상을 삭제하시겠습니까?')) return;
-
-    // Check if backend is configured
-    if (projectId === 'placeholder-project-id' || publicAnonKey === 'placeholder-anon-key') {
-      alert('데모 모드에서는 영상을 실제로 삭제할 수 없습니다.');
-      return;
-    }
 
     try {
       const response = await fetch(
@@ -380,6 +396,9 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
       videoType: video.videoType
     });
     setUploadMethod(video.videoType);
+    setSelectedFile(null);
+    setUploadProgress(0);
+    setIsUploading(false);
     setIsDialogOpen(true);
   };
 
@@ -510,7 +529,7 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
                   {!editingVideo && (
                     <div>
                       <Label>영상 업로드 방법</Label>
-                      <Tabs value={uploadMethod} onValueChange={(value) => setUploadMethod(value as 'youtube' | 'local')} className="mt-2">
+                      <Tabs value={uploadMethod} onValueChange={(value: 'youtube' | 'local') => setUploadMethod(value)} className="mt-2">
                         <TabsList className="grid w-full grid-cols-2">
                           <TabsTrigger value="youtube" className="flex items-center gap-2">
                             <Youtube className="w-4 h-4" />
@@ -688,96 +707,99 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    currentVideos.map(video => (
-                      <TableRow key={video.id}>
-                        <TableCell>
-                          <div className="flex items-center space-x-2">
-                            <img
-                              src={video.thumbnail}
-                              alt={video.title}
-                              className="w-16 h-9 object-cover rounded"
-                              onError={(e) => {
-                                e.currentTarget.src = "https://via.placeholder.com/120x68/f0f0f0/666?text=Video";
-                              }}
-                            />
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-medium max-w-xs">
-                          <div className="truncate" title={video.title}>
-                            {video.title}
-                          </div>
-                        </TableCell>
-                        <TableCell className="max-w-xs">
-                          <div className="truncate text-sm text-gray-600" title={video.description}>
-                            {video.description}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            {video.videoType === 'youtube' ? (
-                              <>
-                                <Youtube className="w-4 h-4 text-red-600" />
-                                <span className="text-xs">YouTube</span>
-                              </>
-                            ) : (
-                              <>
-                                <FileVideo className="w-4 h-4 text-blue-600" />
-                                <span className="text-xs">로컬</span>
-                              </>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">
-                            {formatDuration(video.duration)}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm text-gray-600">
-                          {new Date(video.createdAt).toLocaleDateString('ko-KR')}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center space-x-2">
-                            {video.videoType === 'youtube' && video.youtubeId && (
+                    currentVideos.map(video => {
+                      const displayThumbnail = resolveThumbnailForVideo(video);
+                      return (
+                        <TableRow key={video.id}>
+                          <TableCell>
+                            <div className="flex items-center space-x-2">
+                              <img
+                                src={displayThumbnail}
+                                alt={video.title}
+                                className="w-16 h-9 object-cover rounded"
+                                onError={(e) => {
+                                  e.currentTarget.src = DEFAULT_LOCAL_THUMBNAIL;
+                                }}
+                              />
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-medium max-w-xs">
+                            <div className="truncate" title={video.title}>
+                              {video.title}
+                            </div>
+                          </TableCell>
+                          <TableCell className="max-w-xs">
+                            <div className="truncate text-sm text-gray-600" title={video.description}>
+                              {video.description}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              {video.videoType === 'youtube' ? (
+                                <>
+                                  <Youtube className="w-4 h-4 text-red-600" />
+                                  <span className="text-xs">YouTube</span>
+                                </>
+                              ) : (
+                                <>
+                                  <FileVideo className="w-4 h-4 text-blue-600" />
+                                  <span className="text-xs">로컬</span>
+                                </>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">
+                              {formatDuration(video.duration)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-sm text-gray-600">
+                            {new Date(video.createdAt).toLocaleDateString('ko-KR')}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center space-x-2">
+                              {video.videoType === 'youtube' && video.youtubeId && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => window.open(`https://www.youtube.com/watch?v=${video.youtubeId}`, '_blank')}
+                                  title="YouTube에서 보기"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                </Button>
+                              )}
+                              {video.videoType === 'local' && video.videoUrl && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => window.open(video.videoUrl, '_blank')}
+                                  title="영상 보기"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                </Button>
+                              )}
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => window.open(`https://www.youtube.com/watch?v=${video.youtubeId}`, '_blank')}
-                                title="YouTube에서 보기"
+                                onClick={() => handleEdit(video)}
+                                title="수정"
                               >
-                                <ExternalLink className="h-3 w-3" />
+                                <Edit className="h-3 w-3" />
                               </Button>
-                            )}
-                            {video.videoType === 'local' && video.videoUrl && (
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => window.open(video.videoUrl, '_blank')}
-                                title="영상 보기"
+                                onClick={() => handleDelete(video.id)}
+                                className="text-red-600 hover:text-red-700"
+                                title="삭제"
                               >
-                                <ExternalLink className="h-3 w-3" />
+                                <Trash2 className="h-3 w-3" />
                               </Button>
-                            )}
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleEdit(video)}
-                              title="수정"
-                            >
-                              <Edit className="h-3 w-3" />
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleDelete(video.id)}
-                              className="text-red-600 hover:text-red-700"
-                              title="삭제"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
                   )}
                 </TableBody>
               </Table>
