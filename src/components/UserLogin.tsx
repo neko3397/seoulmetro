@@ -77,7 +77,7 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
     }
 
     if (!validateEmployeeId(employeeId)) {
-      setError("사번은 2로 시작하는 8자리 숫자여야 합니다.");
+      setError("올바른 사번 형식이 아닙니다.");
       return;
     }
 
@@ -205,7 +205,6 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
               <Input
                 id="employeeId"
                 type="text"
-                placeholder="20000000 (2로 시작하는 8자리)"
                 value={employeeId}
                 onChange={(e) => {
                   const value = e.target.value.replace(/\D/g, "").slice(0, 8);
@@ -215,7 +214,6 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
                 maxLength={8}
                 className="text-center tracking-wider"
               />
-              <p className="text-xs text-muted-foreground">2로 시작하는 8자리 숫자를 입력하세요</p>
             </div>
 
             <div className="space-y-2">
@@ -229,7 +227,6 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
                 maxLength={5}
                 className="text-center"
               />
-              <p className="text-xs text-muted-foreground">한글 이름을 입력하세요 (2-5자)</p>
             </div>
 
             <Button
