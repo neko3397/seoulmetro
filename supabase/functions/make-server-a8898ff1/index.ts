@@ -64,6 +64,23 @@ const canonicalizeEmployeeId = (employeeId: string) =>
 const canonicalizeEmployeeName = (name: string) =>
   name.replace(/\s+/g, "").trim();
 
+const parseKvValue = <T>(value: unknown): T | null => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value) as T;
+    } catch (error) {
+      console.warn("Failed to parse KV value string:", error);
+      return null;
+    }
+  }
+
+  return value as T;
+};
+
 async function initializeAuthorizedEmployees() {
   try {
     const existing = await kv.get(AUTHORIZED_EMPLOYEES_KEY);
@@ -131,15 +148,15 @@ async function getUserRecord(
 }
 
 async function getAllUserRecords(): Promise<StoredUserRecord[]> {
-  const records = await kv.getByPrefix(USER_RECORD_PREFIX);
-  return (records || [])
+  const entries = await kv.getByPrefix(USER_RECORD_PREFIX);
+  return entries
+    .map((entry) => parseKvValue<StoredUserRecord>(entry.value))
     .filter(
-      (record: unknown): record is StoredUserRecord =>
+      (record): record is StoredUserRecord =>
         !!record &&
-        typeof record === "object" &&
-        typeof (record as StoredUserRecord).id === "string" &&
-        typeof (record as StoredUserRecord).employeeId === "string" &&
-        typeof (record as StoredUserRecord).name === "string",
+        typeof record.id === "string" &&
+        typeof record.employeeId === "string" &&
+        typeof record.name === "string",
     )
     .sort((a, b) => a.employeeId.localeCompare(b.employeeId));
 }
@@ -163,8 +180,11 @@ async function migrateAdminsToList() {
     }
 
     // Try to collect existing admins stored by old pattern (admin_*)
-    const oldAdmins = await kv.getByPrefix("admin_"); // returns values
-    if (Array.isArray(oldAdmins) && oldAdmins.length > 0) {
+    const adminEntries = await kv.getByPrefix("admin_");
+    const oldAdmins = adminEntries
+      .map((entry) => parseKvValue<any>(entry.value))
+      .filter(Boolean);
+    if (oldAdmins.length > 0) {
       await setAdmins(oldAdmins);
       console.log(`Migrated ${oldAdmins.length} admins into list`);
       return;
@@ -1280,17 +1300,12 @@ app.post("/make-server-a8898ff1/progress", async (c) => {
 app.get("/make-server-a8898ff1/progress/:userId", async (c) => {
   try {
     const userId = c.req.param("userId");
-    const progressKeys = await kv.getByPrefix(
+    const progressEntries = await kv.getByPrefix(
       `progress_${userId}_`,
     );
-    const progressData = [];
-
-    for (const key of progressKeys) {
-      const progress = await kv.get(key);
-      if (progress) {
-        progressData.push(progress);
-      }
-    }
+    const progressData = progressEntries
+      .map((entry) => parseKvValue<any>(entry.value))
+      .filter(Boolean);
 
     return c.json({ progress: progressData });
   } catch (error) {
@@ -1310,15 +1325,10 @@ app.get("/make-server-a8898ff1/admin/progress", async (c) => {
       return c.json({ error: "인증이 필요합니다." }, 401);
     }
 
-    const progressKeys = await kv.getByPrefix("progress_");
-    const allProgress = [];
-
-    for (const key of progressKeys) {
-      const progress = await kv.get(key);
-      if (progress) {
-        allProgress.push(progress);
-      }
-    }
+    const progressEntries = await kv.getByPrefix("progress_");
+    const allProgress = progressEntries
+      .map((entry) => parseKvValue<any>(entry.value))
+      .filter(Boolean);
 
     return c.json({ progress: allProgress });
   } catch (error) {

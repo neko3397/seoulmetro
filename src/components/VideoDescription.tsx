@@ -11,7 +11,7 @@ interface VideoDescriptionProps {
 
 export const VideoDescription = ({ video }: VideoDescriptionProps) => {
   const { getProgressPercentage, getProgress } = useWatchProgress();
-  
+
   const progressPercentage = getProgressPercentage(video.id, video.duration);
   const progressInfo = getProgress(video.id);
   const isCompleted = progressInfo?.completed || false;
@@ -26,7 +26,7 @@ export const VideoDescription = ({ video }: VideoDescriptionProps) => {
     const date = new Date(dateString);
     const now = new Date();
     const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
-    
+
     if (diffInHours < 1) return '방금 전';
     if (diffInHours < 24) return `${diffInHours}시간 전`;
     return `${Math.floor(diffInHours / 24)}일 전`;
@@ -36,9 +36,9 @@ export const VideoDescription = ({ video }: VideoDescriptionProps) => {
     <Card>
       <CardHeader>
         <div className="flex items-start justify-between gap-4">
-          <CardTitle className="flex-1">{video.title}</CardTitle>
+          <CardTitle className="flex-1 text-xl font-bold">{video.title}</CardTitle>
           <div className="flex items-center gap-2 shrink-0">
-            <Badge variant="outline" className="flex items-center gap-1">
+            <Badge variant="outline" className="flex items-center gap-1 text-lg">
               <Clock className="w-3 h-3" />
               {formatDuration(video.duration)}
             </Badge>
@@ -51,10 +51,10 @@ export const VideoDescription = ({ video }: VideoDescriptionProps) => {
           </div>
         </div>
       </CardHeader>
-      
+
       <CardContent className="space-y-4">
         <p className="leading-relaxed">{video.description}</p>
-        
+
         {progressPercentage > 0 && (
           <div className="space-y-2 p-4 bg-muted rounded-lg">
             <div className="flex items-center justify-between">

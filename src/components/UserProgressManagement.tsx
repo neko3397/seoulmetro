@@ -35,6 +35,9 @@ interface UserInfo {
   name: string;
   employeeId: string;
   department?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  lastLoginAt?: string;
 }
 
 export function UserProgressManagement() {
@@ -206,33 +209,54 @@ export function UserProgressManagement() {
   };
 
   const getUserStats = () => {
-    const userStats: { [key: string]: { totalVideos: number; completedVideos: number; avgProgress: number; lastActivity: string } } = {};
+    const userStats: {
+      [key: string]: {
+        totalVideos: number;
+        completedVideos: number;
+        avgProgress: number;
+        lastActivity?: string;
+      };
+    } = {};
 
-    allProgress.forEach(progress => {
+    // Seed stats with known users so they appear even without progress.
+    Object.keys(users).forEach((userId) => {
+      const user = users[userId];
+      userStats[userId] = {
+        totalVideos: 0,
+        completedVideos: 0,
+        avgProgress: 0,
+        lastActivity: user?.lastLoginAt || user?.updatedAt || user?.createdAt,
+      };
+    });
+
+    allProgress.forEach((progress) => {
       if (!userStats[progress.userId]) {
         userStats[progress.userId] = {
           totalVideos: 0,
           completedVideos: 0,
           avgProgress: 0,
-          lastActivity: progress.lastWatched
+          lastActivity: progress.lastWatched,
         };
       }
 
-      userStats[progress.userId].totalVideos++;
+      const stats = userStats[progress.userId];
+      stats.totalVideos += 1;
       if (progress.progress >= 80) {
-        userStats[progress.userId].completedVideos++;
+        stats.completedVideos += 1;
       }
 
-      if (new Date(progress.lastWatched) > new Date(userStats[progress.userId].lastActivity)) {
-        userStats[progress.userId].lastActivity = progress.lastWatched;
+      const previous = stats.lastActivity;
+      if (!previous || new Date(progress.lastWatched) > new Date(previous)) {
+        stats.lastActivity = progress.lastWatched;
       }
     });
 
-    // Calculate average progress for each user
-    Object.keys(userStats).forEach(userId => {
-      const userProgress = allProgress.filter(p => p.userId === userId);
-      const totalProgress = userProgress.reduce((sum, p) => sum + p.progress, 0);
-      userStats[userId].avgProgress = userProgress.length > 0 ? totalProgress / userProgress.length : 0;
+    Object.keys(userStats).forEach((userId) => {
+      const userProgress = allProgress.filter((p) => p.userId === userId);
+      if (userProgress.length > 0) {
+        const totalProgress = userProgress.reduce((sum, p) => sum + p.progress, 0);
+        userStats[userId].avgProgress = totalProgress / userProgress.length;
+      }
     });
 
     return userStats;
@@ -253,8 +277,17 @@ export function UserProgressManagement() {
     return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString('ko-KR');
+  const formatDate = (dateString?: string) => {
+    if (!dateString) {
+      return '-';
+    }
+
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) {
+      return '-';
+    }
+
+    return date.toLocaleString('ko-KR');
   };
 
   const getUserDisplayName = (userId: string) => {

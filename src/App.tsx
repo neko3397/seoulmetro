@@ -391,7 +391,7 @@ export default function App() {
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1">
               {currentView !== "topics" && (
                 <Button
                   variant="ghost"
@@ -404,10 +404,9 @@ export default function App() {
                   className="flex items-center gap-2"
                 >
                   <ArrowLeft className="w-4 h-4" />
-
                 </Button>
               )}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
                 <img src={logo} alt="Logo" className="w-8 h-8 object-contain self-center" />
                 <h1 className="text-xl font-bold">
                   동대문승무사업소 안전교육허브
@@ -468,7 +467,7 @@ export default function App() {
                     </div>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {categories.map((category) => {
                       const isActive = activeCard === category.id;
                       const isDimmed = Boolean(activeCard && !isActive);
@@ -518,7 +517,7 @@ export default function App() {
           {currentView === "videoList" && (
             <div>
               <div className="mb-8">
-                <h2 className="mb-2">
+                <h2 className="mb-2 text-2xl font-bold">
                   {getCurrentTopic()?.title}
                 </h2>
                 <p className="text-muted-foreground">
@@ -559,31 +558,17 @@ export default function App() {
 
                   {/* 관련 영상 목록 */}
                   <div>
-                    <h3 className="mb-4">이 주제의 다른 영상</h3>
-                    <div className="space-y-3">
+                    <h3 className="mb-4 text-xl ">이 주제의 다른 영상</h3>
+                    <div className="space-y-4">
                       {getCurrentVideos()
                         .filter((video) => video.id !== selectedVideo.id)
                         .slice(0, 3)
                         .map((video) => (
-                          <div
+                          <VideoItem
                             key={video.id}
-                            className="flex gap-3 p-3 rounded-lg hover:bg-muted cursor-pointer transition-colors"
-                            onClick={() => handleVideoSelect(video)}
-                          >
-                            <img
-                              src={video.thumbnail}
-                              alt={video.title}
-                              className="w-20 h-12 object-cover rounded"
-                            />
-                            <div className="flex-1 min-w-0">
-                              <h4 className="line-clamp-2 text-sm mb-1">
-                                {video.title}
-                              </h4>
-                              <p className="text-xs text-muted-foreground">
-                                {Math.floor(video.duration / 60)}분
-                              </p>
-                            </div>
-                          </div>
+                            video={video}
+                            onSelect={handleVideoSelect}
+                          />
                         ))}
                     </div>
                   </div>

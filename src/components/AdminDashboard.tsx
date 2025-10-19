@@ -61,6 +61,21 @@ export function AdminDashboard({ admin, onLogout }: AdminDashboardProps) {
 
       const progressData = await progressResponse.json();
 
+      const usersResponse = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/users`,
+        {
+          headers: {
+            'Authorization': `Bearer ${publicAnonKey}`
+          }
+        }
+      );
+
+      if (!usersResponse.ok) {
+        throw new Error('Failed to fetch users');
+      }
+
+      const usersData = await usersResponse.json();
+
       // Calculate stats
       const categories = categoriesData.categories || [];
       const allProgress = progressData.progress || [];
@@ -81,7 +96,7 @@ export function AdminDashboard({ admin, onLogout }: AdminDashboardProps) {
         }
       }
 
-      const uniqueUsers = new Set(allProgress.map((p: any) => p.userId)).size;
+      const uniqueUsers = usersData.users?.length || 0;
 
       setStats({
         totalUsers: uniqueUsers,
