@@ -130,7 +130,7 @@ export function AdminDashboard({ admin, onLogout }: AdminDashboardProps) {
               />
               <div>
                 <h1 className="text-xl font-semibold text-gray-900">관리자 대시보드</h1>
-                <p className="text-sm text-gray-600">안전교육허브 관리 시스템</p>
+                <p className="text-sm text-gray-600">불안제로 관리 시스템</p>
               </div>
             </div>
             <div className="flex items-center space-x-4">

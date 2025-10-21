@@ -179,7 +179,7 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
           <div>
             <h1 className="mb-2">사용자 로그인</h1>
             <p className="text-muted-foreground">
-              동대문승무사업소 안전교육허브에 로그인하세요
+              동대문승무사업소 불안제로에 로그인하세요
             </p>
           </div>
         </div>
@@ -247,7 +247,7 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
         {/* 안내 메시지 */}
         <div className="text-center text-sm text-muted-foreground">
           <p>서울교통공사 동대문승무사업소</p>
-          <p>안전교육허브</p>
+          <p>불안제로</p>
         </div>
       </div>
     </div>

@@ -103,7 +103,7 @@ export function AdminLogin({ onLogin, onBack }: AdminLoginProps) {
           </div>
           <CardTitle className="text-2xl text-center">관리자 로그인</CardTitle>
           <CardDescription className="text-center">
-            서울교통공사 안전교육허브 관리자 페이지
+            서울교통공사 불안제로 관리자 페이지
           </CardDescription>
         </CardHeader>
         <CardContent>

@@ -58,28 +58,23 @@ export default function App() {
   const [pageTransitionState, setPageTransitionState] = useState<"idle" | "fade-out" | "fade-in">("idle");
   const transitionTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  // 파비콘을 기존 로고로 설정
-  // useEffect(() => {
-  //   const setFavicon = (rel: string, sizes?: string) => {
-  //     let link = document.querySelector<HTMLLinkElement>(
-  //       sizes ? `link[rel='${rel}'][sizes='${sizes}']` : `link[rel='${rel}']`
-  //     );
-  //     if (!link) {
-  //       link = document.createElement('link');
-  //       link.rel = rel;
-  //       if (sizes) link.sizes = sizes;
-  //       document.head.appendChild(link);
-  //     }
-  //     link.type = 'image/png';
-  //     link.href = logo;
-  //   };
+  const navigateTo = (view: ViewState) => {
+    setCurrentView(view);
+    history.pushState({ view }, '', window.location.href);
+  };
 
-  //   // 일반 파비콘 및 애플 터치 아이콘을 모두 로고로 지정
-  //   setFavicon('icon', '32x32');
-  //   setFavicon('icon', '16x16');
-  //   setFavicon('shortcut icon');
-  //   setFavicon('apple-touch-icon', '180x180');
-  // }, []);
+  // 뒤로가기 버튼 처리
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      if (event.state && event.state.view) {
+        setCurrentView(event.state.view);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // 페이지 로드 시 저장된 사용자 정보 확인
   useEffect(() => {
@@ -193,7 +188,7 @@ export default function App() {
     }
 
     queueTransitionTimer(() => {
-      setCurrentView("videoList");
+      navigateTo("videoList");
       setActiveCard(null);
       setPageTransitionState("fade-in");
 
@@ -209,7 +204,7 @@ export default function App() {
     setPageTransitionState("fade-out");
 
     queueTransitionTimer(() => {
-      setCurrentView("videoPlayer");
+      navigateTo("videoPlayer");
       setPageTransitionState("fade-in");
 
       queueTransitionTimer(() => {
@@ -223,7 +218,7 @@ export default function App() {
     setPageTransitionState("fade-out");
 
     queueTransitionTimer(() => {
-      setCurrentView("topics");
+      navigateTo("topics");
       setSelectedTopicId("");
       setSelectedVideo(null);
       setActiveCard(null);
@@ -240,7 +235,7 @@ export default function App() {
     setPageTransitionState("fade-out");
 
     queueTransitionTimer(() => {
-      setCurrentView("videoList");
+      navigateTo("videoList");
       setSelectedVideo(null);
       setPageTransitionState("fade-in");
 
@@ -256,7 +251,7 @@ export default function App() {
     setPageTransitionState("fade-out");
 
     queueTransitionTimer(() => {
-      setCurrentView("adminDashboard");
+      navigateTo("adminDashboard");
       setPageTransitionState("fade-in");
 
       queueTransitionTimer(() => {
@@ -271,7 +266,7 @@ export default function App() {
     setPageTransitionState("fade-out");
 
     queueTransitionTimer(() => {
-      setCurrentView("topics");
+      navigateTo("topics");
       setPageTransitionState("fade-in");
 
       queueTransitionTimer(() => {
@@ -286,7 +281,7 @@ export default function App() {
     setPageTransitionState("fade-out");
 
     queueTransitionTimer(() => {
-      setCurrentView("topics");
+      navigateTo("topics");
       setPageTransitionState("fade-in");
 
       queueTransitionTimer(() => {
@@ -302,7 +297,7 @@ export default function App() {
     setPageTransitionState("fade-out");
 
     queueTransitionTimer(() => {
-      setCurrentView("userLogin");
+      navigateTo("userLogin");
       setPageTransitionState("fade-in");
 
       queueTransitionTimer(() => {
@@ -409,7 +404,7 @@ export default function App() {
               <div className="flex items-center gap-1">
                 <img src={logo} alt="Logo" className="w-8 h-8 object-contain self-center" />
                 <h1 className="text-xl font-bold">
-                  동대문승무사업소 안전교육허브
+                  동대문승무사업소 불안제로
                 </h1>
               </div>
             </div>
@@ -431,7 +426,7 @@ export default function App() {
                         {currentUser.name}님!
                       </h1>
                       <h2 className="gemini text-xl mb-4">
-                        안전교육허브에 오신 것을 환영합니다! 👋
+                        불안제로에 오신 것을 환영합니다! 👋
                       </h2>
                       <p className="text-muted-foreground max-w-2xl mx-auto">
                         안전한 지하철을 만들기 위한 학습을
@@ -599,7 +594,7 @@ export default function App() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCurrentView("adminLogin")}
+              onClick={() => navigateTo("adminLogin")}
               className="flex items-center gap-2"
             >
               <Settings className="w-4 h-4" />
