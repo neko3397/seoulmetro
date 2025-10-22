@@ -160,13 +160,7 @@ export function AdminLogin({ onLogin, onBack }: AdminLoginProps) {
               {loading ? '로그인 중...' : '로그인'}
             </Button>
           </form>
-          <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-sm text-blue-900 font-medium mb-2">📌 기본 관리자 계정</p>
-            <div className="text-sm text-blue-800 space-y-1">
-              <p>• 사번: <code className="bg-blue-100 px-2 py-0.5 rounded">ADMIN001</code></p>
-              <p>• 비밀번호: <code className="bg-blue-100 px-2 py-0.5 rounded">admin123!</code></p>
-            </div>
-          </div>
+
         </CardContent>
       </Card>
     </div>
