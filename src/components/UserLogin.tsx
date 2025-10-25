@@ -11,7 +11,7 @@ import { projectId, publicAnonKey } from "../utils/supabase/info";
 interface LoggedInUser {
   employeeId: string;
   name: string;
-  userId: string;
+  id: string;
   loginDate: string;
   isNewUser: boolean;
 }
@@ -105,12 +105,12 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
 
       const userStorageKey = `user_${normalizedEmployeeId}`;
       const existingLocalUser = localStorage.getItem(userStorageKey);
-      const userId = `employee_${normalizedEmployeeId}`;
+      const id = `${normalizedEmployeeId}`;
 
       const userData: LoggedInUser = {
         employeeId: normalizedEmployeeId,
         name: normalizedName,
-        userId,
+        id: id,
         loginDate: new Date().toISOString(),
         isNewUser: !existingLocalUser
       };
@@ -127,7 +127,7 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
             "Cache-Control": "no-cache"
           },
           body: JSON.stringify({
-            userId,
+            id: id,
             name: normalizedName,
             employeeId: normalizedEmployeeId
           })
@@ -142,7 +142,37 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
 
       localStorage.setItem(userStorageKey, JSON.stringify(userData));
       localStorage.setItem("currentUser", JSON.stringify(userData));
-      localStorage.setItem("learningHubUserId", userId);
+      localStorage.setItem("learningHubId", id);
+
+      // 자동 출석 체크: 서버에 attendance=true 전송
+      try {
+        const v2 = Date.now();
+        const attendRes = await fetch(
+          `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/users/${normalizedEmployeeId}/attendance?v=${v2}`,
+          {
+            method: 'POST',
+            cache: 'no-store',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${publicAnonKey}`,
+              'Cache-Control': 'no-cache'
+            },
+            body: JSON.stringify({ attendance: true })
+          }
+        );
+
+        if (attendRes.ok) {
+          const attendData = await attendRes.json();
+          if (attendData?.user) {
+            // 서버 정본으로 로컬 갱신
+            localStorage.setItem("currentUser", JSON.stringify(attendData.user));
+          }
+        } else {
+          console.warn('Attendance sync failed with status', attendRes.status);
+        }
+      } catch (e) {
+        console.error('Attendance sync error:', e);
+      }
 
       onLogin(userData);
     } catch (error) {

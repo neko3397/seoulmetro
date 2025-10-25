@@ -15,9 +15,23 @@ const Progress = React.forwardRef<
     )}
     {...props}
   >
+    {/*
+      Use absolute positioning for the indicator so its background-gradient
+      cannot be suppressed by parent flex layout or sizing. Keep a small
+      visual clamp for 0 values (render-only) so a thin sliver is visible.
+    */}
     <ProgressPrimitive.Indicator
-      className="h-full w-full flex-1 bg-primary transition-all"
-      style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
+      aria-hidden
+      // expose a data attribute for easier inspection in DevTools
+      data-progress-width={`${Math.max(3, Number(value || 0))}%`}
+      className="absolute left-0 top-0 bottom-0 transition-all"
+      // Provide explicit inline background & height to avoid external CSS/utility purge
+      // hiding the gradient and to make computed styles visible in DevTools.
+      style={{
+        width: `${Math.max(3, Number(value || 0))}%`,
+        height: '100%',
+        backgroundImage: 'linear-gradient(90deg, #3b82f6, #8b5cf6)'
+      }}
     />
   </ProgressPrimitive.Root>
 ))

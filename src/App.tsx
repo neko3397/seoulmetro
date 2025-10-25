@@ -8,6 +8,7 @@ import { VideoDescription } from "./components/VideoDescription";
 import { AdminLogin } from "./components/AdminLogin";
 import { AdminDashboard } from "./components/AdminDashboard";
 import { UserLogin } from "./components/UserLogin";
+import MyPage from "./components/MyPage";
 import { Button } from "./components/ui/button";
 import {
   ArrowLeft,
@@ -36,7 +37,8 @@ type ViewState =
   | "videoPlayer"
   | "adminLogin"
   | "adminDashboard"
-  | "userLogin";
+  | "userLogin"
+  | "myPage";
 
 const CARD_TRANSITION_DURATION = 420;
 const PAGE_TRANSITION_DURATION = 260;
@@ -66,10 +68,17 @@ export default function App() {
   // 뒤로가기 버튼 처리
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
-      if (event.state && event.state.view) {
-        setCurrentView(event.state.view);
-      }
+      // If the popped state contains a view, use it. Otherwise fall back to topics.
+      const view = event.state && event.state.view ? event.state.view : "topics";
+      setCurrentView(view);
     };
+
+    // Ensure the initial history entry has a view so back/forward work predictably.
+    try {
+      history.replaceState({ view: currentView }, '', window.location.href);
+    } catch (e) {
+      // ignore (some environments may not allow replaceState)
+    }
 
     window.addEventListener('popstate', handlePopState);
 
@@ -306,6 +315,21 @@ export default function App() {
     }, PAGE_TRANSITION_DURATION);
   };
 
+  const handleGoToMyPage = () => {
+    // Use the same transition pattern as other navigations so MyPage fades in/out
+    stopTransitions({ resetActive: true });
+    setPageTransitionState("fade-out");
+
+    queueTransitionTimer(() => {
+      navigateTo("myPage");
+      setPageTransitionState("fade-in");
+
+      queueTransitionTimer(() => {
+        setPageTransitionState("idle");
+      }, PAGE_TRANSITION_DURATION);
+    }, PAGE_TRANSITION_DURATION);
+  };
+
   const getCurrentVideos = () => {
     return videosByCategory[selectedTopicId] || [];
   };
@@ -380,6 +404,7 @@ export default function App() {
     );
   }
 
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* 헤더 */}
@@ -391,11 +416,17 @@ export default function App() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={
-                    currentView === "videoList"
-                      ? handleBackToTopics
-                      : handleBackToVideoList
-                  }
+                  onClick={() => {
+                    // Prefer returning to topics for MyPage and VideoList.
+                    if (currentView === "videoList" || currentView === "myPage") {
+                      return handleBackToTopics();
+                    }
+                    if (currentView === "videoPlayer") {
+                      return handleBackToVideoList();
+                    }
+                    // Fallback
+                    return handleBackToTopics();
+                  }}
                   className="flex items-center gap-2"
                 >
                   <ArrowLeft className="w-4 h-4" />
@@ -571,6 +602,13 @@ export default function App() {
               </div>
             </div>
           )}
+
+          {currentView === "myPage" && (
+            <MyPage
+              videosByCategory={videosByCategory}
+              onBack={handleBackToTopics}
+            />
+          )}
         </div>
       </main>
 
@@ -599,6 +637,15 @@ export default function App() {
             >
               <Settings className="w-4 h-4" />
               관리자
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleGoToMyPage}
+              className="flex items-center gap-2"
+            >
+              <User className="w-4 h-4" />
+              내 페이지
             </Button>
           </div>
         </div>

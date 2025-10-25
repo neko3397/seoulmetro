@@ -59,7 +59,7 @@ export const VideoDescription = ({ video }: VideoDescriptionProps) => {
           <div className="space-y-2 p-4 bg-muted rounded-lg">
             <div className="flex items-center justify-between">
               <h4>시청 진행률</h4>
-              <span>{Math.round(progressPercentage)}%</span>
+              <span>{progressPercentage}%</span>
             </div>
             <Progress value={progressPercentage} className="h-2" />
             {progressInfo?.lastWatchedAt && (

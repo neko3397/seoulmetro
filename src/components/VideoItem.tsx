@@ -73,7 +73,7 @@ export const VideoItem = ({ video, onSelect }: VideoItemProps) => {
                 <span className="text-sm text-muted-foreground">
                   시청 진행률
                 </span>
-                <span className="text-sm">{Math.round(progressPercentage)}%</span>
+                <span className="text-sm">{progressPercentage}%</span>
               </div>
               <Progress value={progressPercentage} className="h-2" />
             </div>

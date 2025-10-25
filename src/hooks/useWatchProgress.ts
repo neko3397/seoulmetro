@@ -53,7 +53,7 @@ export const useWatchProgress = () => {
       videoId,
       watchedSeconds,
       totalDuration,
-      progressPercentage: progressPercentage.toFixed(1) + '%',
+      progressPercentage: progressPercentage + '%',
       categoryId,
       completed
     });
@@ -94,7 +94,9 @@ export const useWatchProgress = () => {
   const getProgressPercentage = useCallback((videoId: string, totalDuration: number): number => {
     const progress = getProgress(videoId);
     if (!progress) return 0;
-    return Math.min((progress.watchedSeconds / totalDuration) * 100, 100);
+    const raw = Math.min((progress.watchedSeconds / totalDuration) * 100, 100);
+    // Round to one decimal place for UI consistency
+    return Math.round(raw * 10) / 10;
   }, [getProgress]);
 
   return {

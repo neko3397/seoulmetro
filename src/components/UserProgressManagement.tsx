@@ -9,13 +9,13 @@ import { Search, Eye, Clock, PlayCircle, RefreshCcw } from 'lucide-react';
 import { projectId, publicAnonKey } from '../utils/supabase/info';
 
 interface UserProgress {
-  userId: string;
+  id: string;
   videoId: string;
   categoryId: string;
   progress: number;
   watchTime: number;
   lastWatched: string;
-  userName?: string;
+  name?: string;
   employeeId?: string;
 }
 
@@ -53,16 +53,16 @@ export function UserProgressManagement() {
     const map: Record<string, { name?: string; employeeId?: string }> = {};
 
     allProgress.forEach((progress) => {
-      if (!map[progress.userId]) {
-        map[progress.userId] = {};
+      if (!map[progress.id]) {
+        map[progress.id] = {};
       }
 
-      if (progress.userName && !map[progress.userId].name) {
-        map[progress.userId].name = progress.userName;
+      if (progress.name && !map[progress.id].name) {
+        map[progress.id].name = progress.name;
       }
 
-      if (progress.employeeId && !map[progress.userId].employeeId) {
-        map[progress.userId].employeeId = progress.employeeId;
+      if (progress.employeeId && !map[progress.employeeId].employeeId) {
+        map[progress.employeeId].employeeId = progress.employeeId;
       }
     });
 
@@ -175,7 +175,7 @@ export function UserProgressManagement() {
 
       const mockProgress = [
         {
-          userId: 'demo_user_1',
+          id: 'demo_user_1',
           videoId: 'fire_1',
           categoryId: 'fire',
           progress: 75,
@@ -183,7 +183,7 @@ export function UserProgressManagement() {
           lastWatched: new Date().toISOString()
         },
         {
-          userId: 'demo_user_2',
+          id: 'demo_user_2',
           videoId: 'safety_1',
           categoryId: 'safety',
           progress: 90,
@@ -195,7 +195,6 @@ export function UserProgressManagement() {
       setCategories(mockCategories);
       setVideos(mockVideos);
       setUsers(mockUsers);
-      setAllProgress(mockProgress);
       console.log('⚠️ Using fallback mock data');
     } finally {
       setLoading(false);
@@ -219,9 +218,9 @@ export function UserProgressManagement() {
     } = {};
 
     // Seed stats with known users so they appear even without progress.
-    Object.keys(users).forEach((userId) => {
-      const user = users[userId];
-      userStats[userId] = {
+    Object.keys(users).forEach((id) => {
+      const user = users[id];
+      userStats[id] = {
         totalVideos: 0,
         completedVideos: 0,
         avgProgress: 0,
@@ -230,8 +229,8 @@ export function UserProgressManagement() {
     });
 
     allProgress.forEach((progress) => {
-      if (!userStats[progress.userId]) {
-        userStats[progress.userId] = {
+      if (!userStats[progress.id]) {
+        userStats[progress.id] = {
           totalVideos: 0,
           completedVideos: 0,
           avgProgress: 0,
@@ -239,7 +238,7 @@ export function UserProgressManagement() {
         };
       }
 
-      const stats = userStats[progress.userId];
+      const stats = userStats[progress.id];
       stats.totalVideos += 1;
       if (progress.progress >= 80) {
         stats.completedVideos += 1;
@@ -251,19 +250,19 @@ export function UserProgressManagement() {
       }
     });
 
-    Object.keys(userStats).forEach((userId) => {
-      const userProgress = allProgress.filter((p) => p.userId === userId);
+    Object.keys(userStats).forEach((id) => {
+      const userProgress = allProgress.filter((p) => p.id === id);
       if (userProgress.length > 0) {
         const totalProgress = userProgress.reduce((sum, p) => sum + p.progress, 0);
-        userStats[userId].avgProgress = totalProgress / userProgress.length;
+        userStats[id].avgProgress = totalProgress / userProgress.length;
       }
     });
 
     return userStats;
   };
 
-  const getUserProgress = (userId: string) => {
-    return allProgress.filter(p => p.userId === userId);
+  const getUserProgress = (id: string) => {
+    return allProgress.filter(p => p.id === id);
   };
 
   const formatDuration = (seconds: number) => {
@@ -290,8 +289,8 @@ export function UserProgressManagement() {
     return date.toLocaleString('ko-KR');
   };
 
-  const getUserDisplayName = (userId: string) => {
-    const user = users[userId];
+  const getUserDisplayName = (id: string) => {
+    const user = users[id];
     if (user) {
       const parts = [user.name, user.employeeId ? `(${user.employeeId})` : null].filter(Boolean);
       const formatted = parts.join(' ').trim();
@@ -300,7 +299,7 @@ export function UserProgressManagement() {
       }
     }
 
-    const fallback = progressUserInfo[userId];
+    const fallback = progressUserInfo[id];
     if (fallback) {
       if (fallback.name && fallback.employeeId) {
         return `${fallback.name} (${fallback.employeeId})`;
@@ -313,16 +312,16 @@ export function UserProgressManagement() {
       }
     }
 
-    return userId; // fallback to user ID if user info not found
+    return id; // fallback to user ID if user info not found
   };
 
   const userStats = getUserStats();
-  const filteredUsers = Object.keys(userStats).filter(userId => {
-    const user = users[userId];
-    const fallback = progressUserInfo[userId];
+  const filteredUsers = Object.keys(userStats).filter(id => {
+    const user = users[id];
+    const fallback = progressUserInfo[id];
     const searchLower = searchTerm.toLowerCase();
     return (
-      userId.toLowerCase().includes(searchLower) ||
+      id.toLowerCase().includes(searchLower) ||
       (user?.name && user.name.toLowerCase().includes(searchLower)) ||
       (user?.employeeId && user.employeeId.toLowerCase().includes(searchLower)) ||
       (fallback?.name && fallback.name.toLowerCase().includes(searchLower)) ||
@@ -397,12 +396,12 @@ export function UserProgressManagement() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredUsers.map(userId => {
-                    const stats = userStats[userId];
+                  filteredUsers.map(id => {
+                    const stats = userStats[id];
                     return (
-                      <TableRow key={userId}>
+                      <TableRow key={id}>
                         <TableCell className="font-medium">
-                          {getUserDisplayName(userId)}
+                          {getUserDisplayName(id)}
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center">
@@ -436,10 +435,10 @@ export function UserProgressManagement() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => setSelectedUser(selectedUser === userId ? null : userId)}
+                            onClick={() => setSelectedUser(selectedUser === id ? null : id)}
                           >
                             <Eye className="h-4 w-4 mr-1" />
-                            {selectedUser === userId ? '닫기' : '보기'}
+                            {selectedUser === id ? '닫기' : '보기'}
                           </Button>
                         </TableCell>
                       </TableRow>

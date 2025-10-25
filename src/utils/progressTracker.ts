@@ -1,7 +1,7 @@
 import { projectId, publicAnonKey } from './supabase/info';
 
 export interface ProgressData {
-  userId: string;
+  id: string;
   videoId: string;
   categoryId: string;
   progress: number;
@@ -10,7 +10,7 @@ export interface ProgressData {
 }
 
 // Generate a unique user ID for the session
-export const getUserId = (): string => {
+export const getId = (): string => {
   try {
     const currentUserRaw = localStorage.getItem('currentUser');
     if (currentUserRaw) {
@@ -18,14 +18,14 @@ export const getUserId = (): string => {
       if (parsed?.employeeId) {
         const normalizedEmployeeId = String(parsed.employeeId).trim();
         if (normalizedEmployeeId) {
-          const normalizedUserId = `employee_${normalizedEmployeeId}`;
-          const storedUserId = localStorage.getItem('learningHubUserId');
+          const normalizedid = `employee_${normalizedEmployeeId}`;
+          const storedid = localStorage.getItem('learningHubid');
 
-          if (storedUserId !== normalizedUserId) {
-            localStorage.setItem('learningHubUserId', normalizedUserId);
+          if (storedid !== normalizedid) {
+            localStorage.setItem('learningHubid', normalizedid);
           }
 
-          return normalizedUserId;
+          return normalizedid;
         }
       }
     }
@@ -33,12 +33,12 @@ export const getUserId = (): string => {
     console.warn('currentUser 파싱 오류:', error);
   }
 
-  let userId = localStorage.getItem('learningHubUserId');
-  if (!userId) {
-    userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    localStorage.setItem('learningHubUserId', userId);
+  let id = localStorage.getItem('learningHubid');
+  if (!id) {
+    id = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    localStorage.setItem('learningHubid', id);
   }
-  return userId;
+  return id;
 };
 
 // Save progress to backend
@@ -48,7 +48,7 @@ export const saveProgress = async (
   progress: number,
   watchTime: number
 ): Promise<void> => {
-  const userId = getUserId();
+  const id = getId();
   // 사용자 정보 가져오기
   let userName = '';
   let employeeId = '';
@@ -64,7 +64,7 @@ export const saveProgress = async (
   }
 
   console.log('💾 progressTracker.saveProgress called:', {
-    userId,
+    id,
     userName,
     employeeId,
     videoId,
@@ -76,7 +76,7 @@ export const saveProgress = async (
   // Always save to localStorage for now
   const localKey = `progress_${videoId}`;
   const progressData = {
-    userId,
+    id,
     userName,
     employeeId,
     videoId,
@@ -89,29 +89,29 @@ export const saveProgress = async (
   console.log('✅ Saved to localStorage with key:', localKey);  // Try to save to backend; fall back silently on failure
   try {
     const v = Date.now();
-    console.log('🌐 Attempting backend save to:', `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/progress?v=${v}`);
+    // Use local mock server when running on localhost for safe testing
+    const apiBase = `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1`;
 
-    const response = await fetch(
-      `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/progress?v=${v}`,
-      {
-        method: 'POST',
-        cache: 'no-store',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${publicAnonKey}`,
-          'Cache-Control': 'no-cache'
-        },
-        body: JSON.stringify({
-          userId,
-          userName,
-          employeeId,
-          videoId,
-          categoryId,
-          progress,
-          watchTime
-        })
-      }
-    );
+    console.log('🌐 Attempting backend save to:', `${apiBase}/progress?v=${v}`);
+
+    const response = await fetch(`${apiBase}/progress?v=${v}`, {
+      method: 'POST',
+      cache: 'no-store',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${publicAnonKey}`,
+        'Cache-Control': 'no-cache'
+      },
+      body: JSON.stringify({
+        id,
+        userName,
+        employeeId,
+        videoId,
+        categoryId,
+        progress,
+        watchTime
+      })
+    });
 
     if (response.ok) {
       console.log('✅ Backend save successful');
@@ -137,18 +137,17 @@ export const getLocalProgress = (videoId: string): ProgressData | null => {
 
 // Get user's progress from backend
 export const getUserProgress = async (): Promise<ProgressData[]> => {
-  const userId = getUserId();
+  const id = getId();
   try {
-    const response = await fetch(
-      `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/progress/${userId}`,
-      {
-        cache: 'no-store',
-        headers: {
-          'Authorization': `Bearer ${publicAnonKey}`,
-          'Cache-Control': 'no-cache'
-        }
+    const apiBase = `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1`;
+
+    const response = await fetch(`${apiBase}/${id}`, {
+      cache: 'no-store',
+      headers: {
+        'Authorization': `Bearer ${publicAnonKey}`,
+        'Cache-Control': 'no-cache'
       }
-    );
+    });
 
     const data = await response.json();
     return data.progress || [];
@@ -161,7 +160,7 @@ export const getUserProgress = async (): Promise<ProgressData[]> => {
       if (key && key.startsWith('progress_')) {
         try {
           const data = JSON.parse(localStorage.getItem(key) || '{}');
-          if (data.userId === userId) {
+          if (data.id === id) {
             progressData.push(data);
           }
         } catch (e) {

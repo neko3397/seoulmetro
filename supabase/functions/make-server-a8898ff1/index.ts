@@ -742,11 +742,11 @@ app.post("/make-server-a8898ff1/users", async (c: any) => {
       return c.json({ error: "인증이 필요합니다." }, 401);
     }
 
-    const { userId, employeeId, name } = await c.req.json();
+    const { id, employeeId, name } = await c.req.json();
 
-    if (!userId || !employeeId || !name) {
+    if (!id || !employeeId || !name) {
       return c.json(
-        { error: "userId, 사번, 이름을 모두 전달해주세요." },
+        { error: "id, 사번, 이름을 모두 전달해주세요." },
         400,
       );
     }
@@ -786,7 +786,7 @@ app.post("/make-server-a8898ff1/users", async (c: any) => {
     const existingRecord = await getUserRecord(normalizedEmployeeId);
 
     const storedRecord: StoredUserRecord = {
-      id: existingRecord?.id ?? String(userId),
+      id: existingRecord?.id ?? String(id),
       employeeId: normalizedEmployeeId,
       name: displayName,
       createdAt: existingRecord?.createdAt ?? timestamp,
@@ -1271,12 +1271,12 @@ app.delete(
 // Save user progress
 app.post("/make-server-a8898ff1/progress", async (c) => {
   try {
-    const { userId, videoId, categoryId, progress, watchTime } =
+    const { id, videoId, categoryId, progress, watchTime } =
       await c.req.json();
 
-    const progressKey = `progress_${userId}_${videoId}`;
+    const progressKey = `progress_${id}_${videoId}`;
     const progressData = {
-      userId,
+      id,
       videoId,
       categoryId,
       progress,
@@ -1297,11 +1297,11 @@ app.post("/make-server-a8898ff1/progress", async (c) => {
 });
 
 // Get user progress
-app.get("/make-server-a8898ff1/progress/:userId", async (c) => {
+app.get("/make-server-a8898ff1/progress/:id", async (c) => {
   try {
-    const userId = c.req.param("userId");
+    const id = c.req.param("id");
     const progressEntries = await kv.getByPrefix(
-      `progress_${userId}_`,
+      `progress_${id}_`,
     );
     const progressData = progressEntries
       .map((entry) => parseKvValue<any>(entry.value))

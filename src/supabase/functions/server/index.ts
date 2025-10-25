@@ -4,7 +4,7 @@ import { cors } from "npm:hono/cors";
 import { bearerAuth } from "npm:hono/bearer-auth";
 import { logger } from "npm:hono/logger";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import * as kv from "./kv_store.tsx";
+import * as kv from "./kv_store.ts";
 import {
   AUTHORIZED_EMPLOYEES,
   type AuthorizedEmployee,
@@ -45,6 +45,16 @@ interface StoredUserRecord {
   createdAt: string;
   updatedAt: string;
   lastLoginAt: string;
+  // Optional embedded progress entries to keep related data together
+  progress?: UserProgressEntry[];
+}
+
+interface UserProgressEntry {
+  videoId: string;
+  categoryId?: string;
+  progress: number; // percentage or fraction according to client
+  watchTime?: number;
+  lastWatched: string;
 }
 
 const isAuthorizedEmployeeList = (
@@ -137,6 +147,12 @@ async function getAuthorizedEmployees(): Promise<AuthorizedEmployee[]> {
 }
 
 async function saveUserRecord(record: StoredUserRecord) {
+  // Ensure canonical id is set to employeeId for consistency
+  try {
+    record.id = String(record.employeeId);
+  } catch (e) {
+    // ignore
+  }
   await kv.set(`${USER_RECORD_PREFIX}${record.employeeId}`, record);
 }
 
@@ -160,6 +176,103 @@ async function getAllUserRecords(): Promise<StoredUserRecord[]> {
     )
     .sort((a, b) => a.employeeId.localeCompare(b.employeeId));
 }
+
+// Update attendance for a user (synchronized from client)
+app.post("/make-server-a8898ff1/users/:employeeId/attendance", async (c: any) => {
+  try {
+    const authHeader = c.req.header("Authorization");
+    if (!authHeader) {
+      return c.json({ error: "인증이 필요합니다." }, 401);
+    }
+
+    const employeeId = c.req.param("employeeId");
+    const body = await c.req.json();
+    const attendance = Boolean(body?.attendance);
+
+    if (!employeeId) {
+      return c.json({ error: "사번이 필요합니다." }, 400);
+    }
+
+    const existing = await getUserRecord(employeeId);
+    if (!existing) {
+      return c.json({ error: "사용자를 찾을 수 없습니다." }, 404);
+    }
+
+    const updated: StoredUserRecord = {
+      ...existing,
+      attendance,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await saveUserRecord(updated);
+
+    return c.json({ success: true, user: updated });
+  } catch (error) {
+    console.error("Error updating attendance:", error);
+    return c.json({ error: "출석 정보 업데이트 중 오류가 발생했습니다." }, 500);
+  }
+});
+
+// Add attendance log entry for a user (records date/time)
+app.post("/make-server-a8898ff1/users/:employeeId/attendance/log", async (c: any) => {
+  try {
+    const authHeader = c.req.header("Authorization");
+    if (!authHeader) {
+      return c.json({ error: "인증이 필요합니다." }, 401);
+    }
+
+    const employeeId = c.req.param("employeeId");
+    const body = await c.req.json();
+    const { timestamp } = body;
+
+    if (!employeeId) {
+      return c.json({ error: "사번이 필요합니다." }, 400);
+    }
+
+    const entryTime = timestamp ? new Date(timestamp).toISOString() : new Date().toISOString();
+    const key = `attendance_log_${employeeId}_${Date.now()}`;
+    const value = { employeeId, timestamp: entryTime };
+    await kv.set(key, value);
+
+    return c.json({ success: true, entry: value });
+  } catch (error) {
+    console.error("Error logging attendance:", error);
+    return c.json({ error: "출석 로그 기록 중 오류가 발생했습니다." }, 500);
+  }
+});
+
+// Get attendance logs for a user optionally filtered by month (YYYY-MM)
+app.get("/make-server-a8898ff1/users/:employeeId/attendance/logs", async (c: any) => {
+  try {
+    const authHeader = c.req.header("Authorization");
+    if (!authHeader) {
+      return c.json({ error: "인증이 필요합니다." }, 401);
+    }
+
+    const employeeId = c.req.param("employeeId");
+    const month = c.req.query("month"); // expected YYYY-MM
+
+    const entries = await kv.getByPrefix(`attendance_log_${employeeId}_`);
+    const logs = entries
+      .map((e) => parseKvValue<any>(e.value))
+      .filter(Boolean)
+      .map((v) => ({ ...v, date: new Date(v.timestamp).toISOString() }));
+
+    let filtered = logs;
+    if (month) {
+      const [y, m] = (month as string).split("-").map(Number);
+      filtered = logs.filter((l) => {
+        const d = new Date(l.timestamp);
+        return d.getFullYear() === y && d.getMonth() + 1 === m;
+      });
+    }
+
+    return c.json({ logs: filtered });
+  } catch (error) {
+    console.error("Error fetching attendance logs:", error);
+    return c.json({ error: "출석 로그 조회 중 오류가 발생했습니다." }, 500);
+  }
+});
 
 // Admin storage: single list under one key (migration from per-key admin_*)
 const ADMINS_KEY = "admins_list";
@@ -742,11 +855,11 @@ app.post("/make-server-a8898ff1/users", async (c: any) => {
       return c.json({ error: "인증이 필요합니다." }, 401);
     }
 
-    const { userId, employeeId, name } = await c.req.json();
+    const { id, employeeId, name } = await c.req.json();
 
-    if (!userId || !employeeId || !name) {
+    if (!id || !employeeId || !name) {
       return c.json(
-        { error: "userId, 사번, 이름을 모두 전달해주세요." },
+        { error: "id, 사번, 이름을 모두 전달해주세요." },
         400,
       );
     }
@@ -786,7 +899,7 @@ app.post("/make-server-a8898ff1/users", async (c: any) => {
     const existingRecord = await getUserRecord(normalizedEmployeeId);
 
     const storedRecord: StoredUserRecord = {
-      id: existingRecord?.id ?? String(userId),
+      id: existingRecord?.id ?? String(id),
       employeeId: normalizedEmployeeId,
       name: displayName,
       createdAt: existingRecord?.createdAt ?? timestamp,
@@ -1271,22 +1384,47 @@ app.delete(
 // Save user progress
 app.post("/make-server-a8898ff1/progress", async (c) => {
   try {
-    const { userId, videoId, categoryId, progress, watchTime } =
+    const { employeeId, videoId, categoryId, progress, watchTime } =
       await c.req.json();
+    if (!employeeId) {
+      return c.json({ error: 'employeeId is required' }, 400);
+    }
 
-    const progressKey = `progress_${userId}_${videoId}`;
-    const progressData = {
-      userId,
+    // Load the user record and embed progress into it
+    const userRecord = await getUserRecord(String(employeeId));
+    if (!userRecord) {
+      return c.json({ error: '사용자를 찾을 수 없습니다.' }, 404);
+    }
+
+    const entry: UserProgressEntry = {
       videoId,
       categoryId,
-      progress,
-      watchTime,
+      progress: Number(progress) || 0,
+      watchTime: typeof watchTime === 'number' ? watchTime : undefined,
       lastWatched: new Date().toISOString(),
     };
 
-    await kv.set(progressKey, progressData);
+    const existingProgress = Array.isArray(userRecord.progress)
+      ? userRecord.progress
+      : [];
 
-    return c.json({ success: true });
+    // upsert by videoId
+    const idx = existingProgress.findIndex((p) => p.videoId === videoId);
+    if (idx === -1) {
+      existingProgress.push(entry);
+    } else {
+      existingProgress[idx] = { ...existingProgress[idx], ...entry };
+    }
+
+    const updatedRecord: StoredUserRecord = {
+      ...userRecord,
+      progress: existingProgress,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await saveUserRecord(updatedRecord);
+
+    return c.json({ success: true, user: updatedRecord });
   } catch (error) {
     console.error("Error saving progress:", error);
     return c.json(
@@ -1297,17 +1435,19 @@ app.post("/make-server-a8898ff1/progress", async (c) => {
 });
 
 // Get user progress
-app.get("/make-server-a8898ff1/progress/:userId", async (c) => {
+app.get("/make-server-a8898ff1/progress/:employeeId", async (c) => {
   try {
-    const userId = c.req.param("userId");
-    const progressEntries = await kv.getByPrefix(
-      `progress_${userId}_`,
-    );
-    const progressData = progressEntries
-      .map((entry) => parseKvValue<any>(entry.value))
-      .filter(Boolean);
+    const employeeId = c.req.param("employeeId");
+    if (!employeeId) {
+      return c.json({ error: 'employeeId is required' }, 400);
+    }
 
-    return c.json({ progress: progressData });
+    const userRecord = await getUserRecord(String(employeeId));
+    if (!userRecord) {
+      return c.json({ error: '사용자를 찾을 수 없습니다.' }, 404);
+    }
+
+    return c.json({ progress: userRecord.progress || [] });
   } catch (error) {
     console.error("Error getting progress:", error);
     return c.json(
@@ -1325,10 +1465,10 @@ app.get("/make-server-a8898ff1/admin/progress", async (c) => {
       return c.json({ error: "인증이 필요합니다." }, 401);
     }
 
-    const progressEntries = await kv.getByPrefix("progress_");
-    const allProgress = progressEntries
-      .map((entry) => parseKvValue<any>(entry.value))
-      .filter(Boolean);
+    // Aggregate progress entries embedded in user records
+    const users = await getAllUserRecords();
+    const allProgress = users
+      .flatMap((u) => (Array.isArray(u.progress) ? u.progress.map(p => ({ id: u.employeeId, name: u.name, ...p })) : []));
 
     return c.json({ progress: allProgress });
   } catch (error) {
@@ -1337,6 +1477,244 @@ app.get("/make-server-a8898ff1/admin/progress", async (c) => {
       { error: "전체 진행률 조회 중 오류가 발생했습니다." },
       500,
     );
+  }
+});
+
+// Admin migration endpoint: migrate legacy `progress_` KV entries into user records
+app.post("/make-server-a8898ff1/admin/migrate-progress", async (c: any) => {
+  try {
+    const authHeader = c.req.header("Authorization");
+    if (!authHeader) {
+      return c.json({ error: "인증이 필요합니다." }, 401);
+    }
+
+    const progressEntries = await kv.getByPrefix("progress_");
+    const parsed = progressEntries
+      .map((e) => ({ key: e.key, value: parseKvValue<any>(e.value) }))
+      .filter((p) => !!p.value);
+
+    let migrated = 0;
+    let skipped = 0;
+    const createdUsers: string[] = [];
+
+    for (const entry of parsed) {
+      try {
+        const data = entry.value;
+        // expected shape: { id, userName, employeeId, videoId, categoryId, progress, watchTime, lastWatched }
+        const employeeId = String(data?.employeeId || data?.id || '').trim();
+        const videoId = String(data?.videoId || '').trim();
+        if (!employeeId || !videoId) {
+          skipped++;
+          continue;
+        }
+
+        // find or create user record keyed by employeeId
+        let userRecord = await getUserRecord(employeeId);
+        if (!userRecord) {
+          // create a minimal user record so progress can be embedded
+          const now = new Date().toISOString();
+          userRecord = {
+            id: `${employeeId}`,
+            employeeId: employeeId,
+            name: data?.userName || `migrated_${employeeId}`,
+            createdAt: now,
+            updatedAt: now,
+            lastLoginAt: now,
+            progress: [],
+          } as any;
+          createdUsers.push(id);
+        }
+
+        userRecord.progress = Array.isArray(userRecord.progress) ? userRecord.progress : [];
+
+        const existingIdx = userRecord.progress.findIndex((p) => p.videoId === videoId);
+        const newEntry = {
+          videoId,
+          categoryId: data?.categoryId,
+          progress: Number(data?.progress) || 0,
+          watchTime: typeof data?.watchTime === 'number' ? data.watchTime : undefined,
+          lastWatched: data?.lastWatched || new Date().toISOString(),
+        };
+
+        if (existingIdx === -1) {
+          userRecord.progress.push(newEntry);
+          migrated++;
+        } else {
+          // keep the most recent lastWatched / highest progress
+          const existing = userRecord.progress[existingIdx];
+          const existingLast = new Date(existing.lastWatched || 0).getTime();
+          const newLast = new Date(newEntry.lastWatched).getTime();
+          const chosen = {
+            ...existing,
+            progress: Math.max(Number(existing.progress || 0), Number(newEntry.progress || 0)),
+            watchTime: (typeof existing.watchTime === 'number' ? existing.watchTime : 0) + (typeof newEntry.watchTime === 'number' ? newEntry.watchTime : 0),
+            lastWatched: newLast > existingLast ? newEntry.lastWatched : existing.lastWatched,
+          };
+          userRecord.progress[existingIdx] = chosen;
+          migrated++;
+        }
+
+        userRecord.updatedAt = new Date().toISOString();
+        await saveUserRecord(userRecord as StoredUserRecord);
+      } catch (e) {
+        console.warn('Failed to migrate entry', entry.key, e);
+        skipped++;
+      }
+    }
+
+    return c.json({ success: true, migrated, skipped, createdUsers });
+  } catch (error) {
+    console.error('Migration error:', error);
+    return c.json({ error: '마이그레이션 중 오류가 발생했습니다.' }, 500);
+  }
+});
+
+// Admin migration endpoint: normalize scattered user records into
+// canonical keys `user_record_<employeeId>` with values `{ id: <employeeId>, ... }`
+app.post("/make-server-a8898ff1/admin/migrate-user-records", async (c: any) => {
+  try {
+    const authHeader = c.req.header("Authorization");
+    if (!authHeader) {
+      return c.json({ error: "인증이 필요합니다." }, 401);
+    }
+
+    // Support dry-run via query ?dryRun=1 or body { dryRun: true }
+    const urlDry = String(c.req.query('dryRun') || '').toLowerCase();
+    const body = await (async () => {
+      try { return await c.req.json(); } catch (e) { return {}; }
+    })();
+    const dryRun = urlDry === '1' || urlDry === 'true' || Boolean(body?.dryRun);
+
+    // Candidate prefixes that older code may have used for user-like entries
+    const candidatePrefixes = [
+      "user_",
+      "userRecord_",
+      "user-record_",
+      "userrecord_",
+      "employee_",
+      "user:",
+      "user-record-",
+      "userrecord-",
+    ];
+
+    let migrated = 0;
+    let skipped = 0;
+    const touchedKeys: string[] = [];
+    const foundPerPrefix: Record<string, { count: number; sample: string[] }> = {};
+    const matchedEntries: Array<{ key: string; parsed?: any }> = [];
+
+    for (const prefix of candidatePrefixes) {
+      try {
+        const entries = await kv.getByPrefix(prefix);
+        for (const entry of entries || []) {
+          if (!foundPerPrefix[prefix]) foundPerPrefix[prefix] = { count: 0, sample: [] };
+          foundPerPrefix[prefix].count += 1;
+          if (foundPerPrefix[prefix].sample.length < 5) foundPerPrefix[prefix].sample.push(entry.key);
+          try {
+            // Skip already-canonical keys
+            if (entry.key.startsWith(USER_RECORD_PREFIX)) {
+              continue;
+            }
+
+            const parsed = parseKvValue<any>(entry.value);
+            if (!parsed || typeof parsed !== 'object') {
+              skipped++;
+              continue;
+            }
+
+            matchedEntries.push({ key: entry.key, parsed });
+
+            if (dryRun) {
+              // Do not write anything, just collect info
+              migrated++;
+              touchedKeys.push(entry.key);
+              continue;
+            }
+
+            // Attempt to determine employeeId from value fields or key
+            let employeeId = parsed.employeeId || parsed.id || parsed.id || parsed.idRaw || null;
+            if (!employeeId) {
+              // Try to extract digits from key as fallback
+              const digits = (entry.key || '').match(/\d{4,}/g);
+              if (digits && digits.length > 0) {
+                employeeId = digits[0];
+              }
+            }
+
+            if (!employeeId) {
+              skipped++;
+              continue;
+            }
+
+            employeeId = String(employeeId).trim();
+            if (!employeeId) {
+              skipped++;
+              continue;
+            }
+
+            // If target already exists and appears canonical, we may choose to merge
+            const targetKey = `${USER_RECORD_PREFIX}${employeeId}`;
+            const existing = await getUserRecord(employeeId);
+
+            // Build normalized record, preserving useful fields
+            const now = new Date().toISOString();
+            const normalized: StoredUserRecord = {
+              id: employeeId,
+              employeeId: employeeId,
+              name: parsed.name || parsed.userName || parsed.displayName || `migrated_${employeeId}`,
+              createdAt: parsed.createdAt || existing?.createdAt || now,
+              updatedAt: now,
+              lastLoginAt: parsed.lastLoginAt || existing?.lastLoginAt || parsed.lastSeen || now,
+              progress: Array.isArray(parsed.progress) ? parsed.progress : existing?.progress || undefined,
+            } as StoredUserRecord;
+
+            // If existing record present, merge fields conservatively
+            if (existing) {
+              // merge name if missing
+              if (!existing.name && normalized.name) existing.name = normalized.name;
+              // merge progress arrays
+              if (Array.isArray(existing.progress) && Array.isArray(normalized.progress)) {
+                // naive merge: keep existing and append any new videoIds
+                const byVideo = new Map(existing.progress.map((p) => [p.videoId, p]));
+                for (const p of normalized.progress) {
+                  const vid = p.videoId;
+                  if (!byVideo.has(vid)) byVideo.set(vid, p);
+                  else {
+                    const ex = byVideo.get(vid);
+                    // keep max progress / most recent lastWatched
+                    ex.progress = Math.max(Number(ex.progress || 0), Number(p.progress || 0));
+                    ex.lastWatched = (new Date(p.lastWatched).getTime() > new Date(ex.lastWatched).getTime()) ? p.lastWatched : ex.lastWatched;
+                    ex.watchTime = (Number(ex.watchTime || 0) + Number(p.watchTime || 0)) || undefined;
+                    byVideo.set(vid, ex);
+                  }
+                }
+                normalized.progress = Array.from(byVideo.values());
+              } else if (Array.isArray(existing.progress) && !Array.isArray(normalized.progress)) {
+                normalized.progress = existing.progress;
+              }
+
+              // preserve createdAt
+              normalized.createdAt = existing.createdAt || normalized.createdAt;
+            }
+
+            // Save under canonical key
+            await kv.set(targetKey, normalized);
+            touchedKeys.push(entry.key);
+            migrated++;
+          } catch (e) {
+            console.warn('Failed to normalize entry', entry.key, e);
+            skipped++;
+          }
+        }
+      } catch (e) {
+        console.warn('Failed scanning prefix', prefix, e);
+      }
+    }
+
+    return c.json({ success: true, migrated, skipped, touchedKeys, foundPerPrefix, matchedEntries: dryRun ? matchedEntries.slice(0, 50) : undefined, dryRun });
+  } catch (error) {
+    console.error('User records migration error:', error);
+    return c.json({ error: '사용자 레코드 마이그레이션 중 오류가 발생했습니다.' }, 500);
   }
 });
 
