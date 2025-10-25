@@ -1718,5 +1718,85 @@ app.post("/make-server-a8898ff1/admin/migrate-user-records", async (c: any) => {
   }
 });
 
+// Admin utility: create attendance log entries for many users/dates
+// Body: { dates: string[] (YYYY-MM-DD), employeeIds?: string[], dryRun?: boolean }
+app.post("/make-server-a8898ff1/admin/create-attendance-logs", async (c: any) => {
+  try {
+    const authHeader = c.req.header("Authorization");
+    if (!authHeader) {
+      return c.json({ error: "인증이 필요합니다." }, 401);
+    }
+
+    const body = await (async () => {
+      try { return await c.req.json(); } catch (e) { return {}; }
+    })();
+
+    const datesRaw = body?.dates || body?.date || [];
+    const employeeIds: string[] | undefined = Array.isArray(body?.employeeIds) ? body.employeeIds : undefined;
+    const dryRun = Boolean(body?.dryRun);
+
+    if (!datesRaw || (Array.isArray(datesRaw) && datesRaw.length === 0)) {
+      return c.json({ error: 'dates 배열을 하나 이상 전달해주세요. 예: ["2025-10-25"]' }, 400);
+    }
+
+    const dates = Array.isArray(datesRaw) ? datesRaw.map((d: any) => String(d).slice(0, 10)) : [String(datesRaw).slice(0, 10)];
+
+    // Determine target users
+    let targets: { employeeId: string; name?: string }[] = [];
+    if (employeeIds && employeeIds.length > 0) {
+      targets = employeeIds.map(id => ({ employeeId: String(id).trim() }));
+    } else {
+      const all = await getAllUserRecords();
+      targets = all.map(u => ({ employeeId: u.employeeId, name: u.name }));
+    }
+
+    let created = 0;
+    const sampleKeys: string[] = [];
+    const errors: Array<{ employeeId: string; error: string }> = [];
+
+    for (const t of targets) {
+      const employeeId = String(t.employeeId).trim();
+      if (!employeeId) continue;
+      for (const dateStr of dates) {
+        try {
+          // Use midday UTC for the date to produce a deterministic timestamp
+          const ts = new Date(`${dateStr}T12:00:00.000Z`).toISOString();
+          const key = `attendance_log_${employeeId}_${Date.parse(ts)}`;
+          const value = { employeeId, timestamp: ts, createdBy: 'admin_bulk' };
+          if (dryRun) {
+            sampleKeys.push(key);
+            created++;
+            continue;
+          }
+
+          await kv.set(key, value);
+          created++;
+          if (sampleKeys.length < 20) sampleKeys.push(key);
+
+          // Also update the user's attendance boolean on their user record if it exists
+          try {
+            const existingUser = await getUserRecord(employeeId);
+            if (existingUser) {
+              existingUser.attendance = true;
+              existingUser.updatedAt = new Date().toISOString();
+              await saveUserRecord(existingUser as StoredUserRecord);
+            }
+          } catch (e) {
+            // non-fatal: record the error but continue
+            errors.push({ employeeId, error: `failed_update_user_record:${String(e)}` });
+          }
+        } catch (e) {
+          errors.push({ employeeId, error: String(e) });
+        }
+      }
+    }
+
+    return c.json({ success: true, dryRun: Boolean(dryRun), dates, targetCount: targets.length, created, sampleKeys, errors });
+  } catch (error) {
+    console.error('Error creating attendance logs:', error);
+    return c.json({ error: '출석 로그 생성 중 오류가 발생했습니다.' }, 500);
+  }
+});
+
 console.log("Server is ready to accept requests");
 Deno.serve(app.fetch);

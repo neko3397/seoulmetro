@@ -11,7 +11,7 @@ const app = new Hono();
 app.use("*", cors());
 app.use("*", logger(console.log));
 app.use("*", bearerAuth({
-  verifyToken: async (token, c) => {
+  verifyToken: async (token, c)=>{
     // Implement your token verification logic here, e.g., using Supabase
     // const { data: { user }, error } = await supabase.auth.getUser(token);
     // return !error && user;
@@ -22,10 +22,10 @@ app.use("*", bearerAuth({
 const supabase = createClient(Deno.env.get("SUPABASE_URL"), Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"));
 const AUTHORIZED_EMPLOYEES_KEY = "authorized_employees";
 const USER_RECORD_PREFIX = "user_record_";
-const isAuthorizedEmployeeList = (value) => Array.isArray(value) && value.every((item) => item && typeof item === "object" && typeof item.employeeId === "string" && typeof item.name === "string");
-const canonicalizeEmployeeId = (employeeId) => employeeId.replace(/\D/g, "").trim();
-const canonicalizeEmployeeName = (name) => name.replace(/\s+/g, "").trim();
-const parseKvValue = (value) => {
+const isAuthorizedEmployeeList = (value)=>Array.isArray(value) && value.every((item)=>item && typeof item === "object" && typeof item.employeeId === "string" && typeof item.name === "string");
+const canonicalizeEmployeeId = (employeeId)=>employeeId.replace(/\D/g, "").trim();
+const canonicalizeEmployeeName = (name)=>name.replace(/\s+/g, "").trim();
+const parseKvValue = (value)=>{
   if (value === null || value === undefined) {
     return null;
   }
@@ -43,11 +43,11 @@ async function initializeAuthorizedEmployees() {
   try {
     const existing = await kv.get(AUTHORIZED_EMPLOYEES_KEY);
     if (isAuthorizedEmployeeList(existing)) {
-      const existingSet = new Set(existing.map((employee) => `${canonicalizeEmployeeId(employee.employeeId)}:${canonicalizeEmployeeName(employee.name)}`));
-      const newSet = new Set(AUTHORIZED_EMPLOYEES.map((employee) => `${canonicalizeEmployeeId(employee.employeeId)}:${canonicalizeEmployeeName(employee.name)}`));
+      const existingSet = new Set(existing.map((employee)=>`${canonicalizeEmployeeId(employee.employeeId)}:${canonicalizeEmployeeName(employee.name)}`));
+      const newSet = new Set(AUTHORIZED_EMPLOYEES.map((employee)=>`${canonicalizeEmployeeId(employee.employeeId)}:${canonicalizeEmployeeName(employee.name)}`));
       let isSame = existingSet.size === newSet.size;
       if (isSame) {
-        for (const key of newSet) {
+        for (const key of newSet){
           if (!existingSet.has(key)) {
             isSame = false;
             break;
@@ -85,7 +85,7 @@ async function getUserRecord(employeeId) {
 }
 async function getAllUserRecords() {
   const entries = await kv.getByPrefix(USER_RECORD_PREFIX);
-  return entries.map((entry) => parseKvValue(entry.value)).filter((record) => !!record && typeof record.id === "string" && typeof record.employeeId === "string" && typeof record.name === "string").sort((a, b) => a.employeeId.localeCompare(b.employeeId));
+  return entries.map((entry)=>parseKvValue(entry.value)).filter((record)=>!!record && typeof record.id === "string" && typeof record.employeeId === "string" && typeof record.name === "string").sort((a, b)=>a.employeeId.localeCompare(b.employeeId));
 }
 // Admin storage: single list under one key (migration from per-key admin_*)
 const ADMINS_KEY = "admins_list";
@@ -103,7 +103,7 @@ async function migrateAdminsToList() {
     }
     // Try to collect existing admins stored by old pattern (admin_*)
     const adminEntries = await kv.getByPrefix("admin_");
-    const oldAdmins = adminEntries.map((entry) => parseKvValue(entry.value)).filter(Boolean);
+    const oldAdmins = adminEntries.map((entry)=>parseKvValue(entry.value)).filter(Boolean);
     if (oldAdmins.length > 0) {
       await setAdmins(oldAdmins);
       console.log(`Migrated ${oldAdmins.length} admins into list`);
@@ -136,7 +136,7 @@ async function initializeDefaultAdmin() {
     }
   } catch (error) {
     console.error("Error initializing default admin (list):", error);
-    // Continue execution even if this fails
+  // Continue execution even if this fails
   }
 }
 // Initialize default data from mock
@@ -221,7 +221,7 @@ async function initializeDefaultData() {
     }
   } catch (error) {
     console.error("Error initializing default data:", error);
-    // Continue execution even if this fails
+  // Continue execution even if this fails
   }
 }
 // Initialize video bucket
@@ -233,14 +233,14 @@ async function initializeVideoBucket() {
       return;
     }
     const bucketName = "make-a8898ff1-videos";
-    const bucketExists = buckets?.some((bucket) => bucket.name === bucketName);
+    const bucketExists = buckets?.some((bucket)=>bucket.name === bucketName);
     if (!bucketExists) {
       const { error } = await supabase.storage.createBucket(bucketName, {
         public: false
       });
       if (error) {
         console.error("Error creating video bucket:", error);
-        // Continue execution even if bucket creation fails
+      // Continue execution even if bucket creation fails
       } else {
         console.log("Video bucket created successfully");
       }
@@ -249,7 +249,7 @@ async function initializeVideoBucket() {
     }
   } catch (error) {
     console.error("Error initializing video bucket:", error);
-    // Continue execution even if this fails
+  // Continue execution even if this fails
   }
 }
 async function initializeImageBucket() {
@@ -260,14 +260,14 @@ async function initializeImageBucket() {
       return;
     }
     const bucketName = "make-a8898ff1-images";
-    const bucketExists = buckets?.some((bucket) => bucket.name === bucketName);
+    const bucketExists = buckets?.some((bucket)=>bucket.name === bucketName);
     if (!bucketExists) {
       const { error } = await supabase.storage.createBucket(bucketName, {
         public: true
       });
       if (error) {
         console.error("Error creating image bucket:", error);
-        // Continue execution even if bucket creation fails
+      // Continue execution even if bucket creation fails
       } else {
         console.log("Image bucket created successfully");
       }
@@ -285,12 +285,12 @@ async function initializeImageBucket() {
     }
   } catch (error) {
     console.error("Error initializing image bucket:", error);
-    // Continue execution even if this fails
+  // Continue execution even if this fails
   }
 }
 // Initialize app on startup
 console.log("Starting server initialization...");
-(async () => {
+(async ()=>{
   try {
     await initializeAuthorizedEmployees();
     await initializeDefaultAdmin();
@@ -304,7 +304,7 @@ console.log("Starting server initialization...");
   }
 })();
 // Image upload via server (uses service role to bypass RLS for writes)
-app.post("/make-server-a8898ff1/images/upload", async (c) => {
+app.post("/make-server-a8898ff1/images/upload", async (c)=>{
   try {
     const authHeader = c.req.header("Authorization");
     if (!authHeader) {
@@ -357,13 +357,13 @@ app.post("/make-server-a8898ff1/images/upload", async (c) => {
   }
 });
 // Admin authentication
-app.post("/make-server-a8898ff1/admin/login", async (c) => {
+app.post("/make-server-a8898ff1/admin/login", async (c)=>{
   try {
     const { employeeId, password } = await c.req.json();
     // Ensure data is initialized/migrated
     await migrateAdminsToList();
     const admins = await getAdmins();
-    const admin = admins.find((a) => a?.employeeId === employeeId && a?.password === password);
+    const admin = admins.find((a)=>a?.employeeId === employeeId && a?.password === password);
     if (!admin) {
       return c.json({
         error: "사번 또는 비밀번호가 올바르지 않습니다."
@@ -386,7 +386,7 @@ app.post("/make-server-a8898ff1/admin/login", async (c) => {
   }
 });
 // Get all admins
-app.get("/make-server-a8898ff1/admin/list", async (c) => {
+app.get("/make-server-a8898ff1/admin/list", async (c)=>{
   try {
     const authHeader = c.req.header("Authorization");
     if (!authHeader) {
@@ -407,7 +407,7 @@ app.get("/make-server-a8898ff1/admin/list", async (c) => {
   }
 });
 // Create new admin
-app.post("/make-server-a8898ff1/admin/create", async (c) => {
+app.post("/make-server-a8898ff1/admin/create", async (c)=>{
   try {
     const authHeader = c.req.header("Authorization");
     if (!authHeader) {
@@ -418,7 +418,7 @@ app.post("/make-server-a8898ff1/admin/create", async (c) => {
     const { name, employeeId, password } = await c.req.json();
     await migrateAdminsToList();
     const admins = await getAdmins();
-    if (admins.some((a) => a?.employeeId === employeeId)) {
+    if (admins.some((a)=>a?.employeeId === employeeId)) {
       return c.json({
         error: "이미 존재하는 사번입니다."
       }, 400);
@@ -455,7 +455,7 @@ app.post("/make-server-a8898ff1/admin/create", async (c) => {
   }
 });
 // Update admin
-app.put("/make-server-a8898ff1/admin/:id", async (c) => {
+app.put("/make-server-a8898ff1/admin/:id", async (c)=>{
   try {
     const authHeader = c.req.header("Authorization");
     if (!authHeader) {
@@ -467,14 +467,14 @@ app.put("/make-server-a8898ff1/admin/:id", async (c) => {
     const { name, employeeId, password } = await c.req.json();
     await migrateAdminsToList();
     const admins = await getAdmins();
-    const idx = admins.findIndex((a) => a?.id === adminId);
+    const idx = admins.findIndex((a)=>a?.id === adminId);
     if (idx === -1) {
       return c.json({
         error: "관리자를 찾을 수 없습니다."
       }, 404);
     }
     // Check unique employeeId
-    if (employeeId && admins.some((a, i) => i !== idx && a?.employeeId === employeeId)) {
+    if (employeeId && admins.some((a, i)=>i !== idx && a?.employeeId === employeeId)) {
       return c.json({
         error: "이미 존재하는 사번입니다."
       }, 400);
@@ -511,7 +511,7 @@ app.put("/make-server-a8898ff1/admin/:id", async (c) => {
   }
 });
 // Delete admin
-app.delete("/make-server-a8898ff1/admin/:id", async (c) => {
+app.delete("/make-server-a8898ff1/admin/:id", async (c)=>{
   try {
     const authHeader = c.req.header("Authorization");
     if (!authHeader) {
@@ -522,7 +522,7 @@ app.delete("/make-server-a8898ff1/admin/:id", async (c) => {
     const adminId = c.req.param("id");
     await migrateAdminsToList();
     const admins = await getAdmins();
-    const admin = admins.find((a) => a?.id === adminId);
+    const admin = admins.find((a)=>a?.id === adminId);
     if (!admin) {
       return c.json({
         error: "관리자를 찾을 수 없습니다."
@@ -533,7 +533,7 @@ app.delete("/make-server-a8898ff1/admin/:id", async (c) => {
         error: "메인 관리자는 삭제할 수 없습니다."
       }, 400);
     }
-    const updated = admins.filter((a) => a?.id !== adminId);
+    const updated = admins.filter((a)=>a?.id !== adminId);
     await setAdmins(updated);
     return c.json({
       success: true
@@ -546,7 +546,7 @@ app.delete("/make-server-a8898ff1/admin/:id", async (c) => {
   }
 });
 // Validate user authorization
-app.post("/make-server-a8898ff1/users/validate", async (c) => {
+app.post("/make-server-a8898ff1/users/validate", async (c)=>{
   try {
     const authHeader = c.req.header("Authorization");
     if (!authHeader) {
@@ -571,7 +571,7 @@ app.post("/make-server-a8898ff1/users/validate", async (c) => {
       }, 400);
     }
     const authorizedEmployees = await getAuthorizedEmployees();
-    const isAuthorized = authorizedEmployees.some((employee) => canonicalizeEmployeeId(employee.employeeId) === normalizedEmployeeId && canonicalizeEmployeeName(employee.name) === normalizedEmployeeName);
+    const isAuthorized = authorizedEmployees.some((employee)=>canonicalizeEmployeeId(employee.employeeId) === normalizedEmployeeId && canonicalizeEmployeeName(employee.name) === normalizedEmployeeName);
     return c.json({
       success: isAuthorized
     });
@@ -584,7 +584,7 @@ app.post("/make-server-a8898ff1/users/validate", async (c) => {
   }
 });
 // Create or update user record
-app.post("/make-server-a8898ff1/users", async (c) => {
+app.post("/make-server-a8898ff1/users", async (c)=>{
   try {
     const authHeader = c.req.header("Authorization");
     if (!authHeader) {
@@ -612,7 +612,7 @@ app.post("/make-server-a8898ff1/users", async (c) => {
       }, 400);
     }
     const authorizedEmployees = await getAuthorizedEmployees();
-    const isAuthorized = authorizedEmployees.some((employee) => canonicalizeEmployeeId(employee.employeeId) === normalizedEmployeeId && canonicalizeEmployeeName(employee.name) === normalizedEmployeeName);
+    const isAuthorized = authorizedEmployees.some((employee)=>canonicalizeEmployeeId(employee.employeeId) === normalizedEmployeeId && canonicalizeEmployeeName(employee.name) === normalizedEmployeeName);
     if (!isAuthorized) {
       return c.json({
         error: "승인된 사용자만 로그인할 수 있습니다."
@@ -641,7 +641,7 @@ app.post("/make-server-a8898ff1/users", async (c) => {
   }
 });
 // List user records for admin dashboard
-app.get("/make-server-a8898ff1/users", async (c) => {
+app.get("/make-server-a8898ff1/users", async (c)=>{
   try {
     const authHeader = c.req.header("Authorization");
     if (!authHeader) {
@@ -661,7 +661,7 @@ app.get("/make-server-a8898ff1/users", async (c) => {
   }
 });
 // Get categories
-app.get("/make-server-a8898ff1/categories", async (c) => {
+app.get("/make-server-a8898ff1/categories", async (c)=>{
   try {
     const categoriesData = await kv.get("education_categories");
     if (!categoriesData) {
@@ -705,7 +705,7 @@ app.get("/make-server-a8898ff1/categories", async (c) => {
   }
 });
 // Create category
-app.post("/make-server-a8898ff1/categories", async (c) => {
+app.post("/make-server-a8898ff1/categories", async (c)=>{
   try {
     const authHeader = c.req.header("Authorization");
     if (!authHeader) {
@@ -736,7 +736,7 @@ app.post("/make-server-a8898ff1/categories", async (c) => {
   }
 });
 // Update category
-app.put("/make-server-a8898ff1/categories/:id", async (c) => {
+app.put("/make-server-a8898ff1/categories/:id", async (c)=>{
   try {
     const authHeader = c.req.header("Authorization");
     if (!authHeader) {
@@ -747,7 +747,7 @@ app.put("/make-server-a8898ff1/categories/:id", async (c) => {
     const categoryId = c.req.param("id");
     const { title, subtitle, image, description } = await c.req.json();
     const categoriesData = await kv.get("education_categories") || [];
-    const categoryIndex = categoriesData.findIndex((cat) => cat.id === categoryId);
+    const categoryIndex = categoriesData.findIndex((cat)=>cat.id === categoryId);
     if (categoryIndex === -1) {
       return c.json({
         error: "카테고리를 찾을 수 없습니다."
@@ -773,7 +773,7 @@ app.put("/make-server-a8898ff1/categories/:id", async (c) => {
   }
 });
 // Delete category
-app.delete("/make-server-a8898ff1/categories/:id", async (c) => {
+app.delete("/make-server-a8898ff1/categories/:id", async (c)=>{
   try {
     const authHeader = c.req.header("Authorization");
     if (!authHeader) {
@@ -783,7 +783,7 @@ app.delete("/make-server-a8898ff1/categories/:id", async (c) => {
     }
     const categoryId = c.req.param("id");
     const categoriesData = await kv.get("education_categories") || [];
-    const filteredCategories = categoriesData.filter((cat) => cat.id !== categoryId);
+    const filteredCategories = categoriesData.filter((cat)=>cat.id !== categoryId);
     if (filteredCategories.length === categoriesData.length) {
       return c.json({
         error: "카테고리를 찾을 수 없습니다."
@@ -801,7 +801,7 @@ app.delete("/make-server-a8898ff1/categories/:id", async (c) => {
   }
 });
 // Get videos for category
-app.get("/make-server-a8898ff1/videos/:categoryId", async (c) => {
+app.get("/make-server-a8898ff1/videos/:categoryId", async (c)=>{
   try {
     const categoryId = c.req.param("categoryId");
     const videosData = await kv.get(`videos_${categoryId}`) || [];
@@ -816,7 +816,7 @@ app.get("/make-server-a8898ff1/videos/:categoryId", async (c) => {
   }
 });
 // Upload video file
-app.post("/make-server-a8898ff1/upload-video", async (c) => {
+app.post("/make-server-a8898ff1/upload-video", async (c)=>{
   try {
     const authHeader = c.req.header("Authorization");
     if (!authHeader) {
@@ -886,7 +886,7 @@ app.post("/make-server-a8898ff1/upload-video", async (c) => {
   }
 });
 // Create video
-app.post("/make-server-a8898ff1/videos", async (c) => {
+app.post("/make-server-a8898ff1/videos", async (c)=>{
   try {
     const authHeader = c.req.header("Authorization");
     if (!authHeader) {
@@ -930,7 +930,7 @@ app.post("/make-server-a8898ff1/videos", async (c) => {
   }
 });
 // Update video
-app.put("/make-server-a8898ff1/videos/:categoryId/:videoId", async (c) => {
+app.put("/make-server-a8898ff1/videos/:categoryId/:videoId", async (c)=>{
   try {
     const authHeader = c.req.header("Authorization");
     if (!authHeader) {
@@ -942,7 +942,7 @@ app.put("/make-server-a8898ff1/videos/:categoryId/:videoId", async (c) => {
     const videoId = c.req.param("videoId");
     const { title, description, youtubeId, videoUrl, videoType, duration } = await c.req.json();
     const videosData = await kv.get(`videos_${categoryId}`) || [];
-    const videoIndex = videosData.findIndex((video) => video.id === videoId);
+    const videoIndex = videosData.findIndex((video)=>video.id === videoId);
     if (videoIndex === -1) {
       return c.json({
         error: "영상을 찾을 수 없습니다."
@@ -980,7 +980,7 @@ app.put("/make-server-a8898ff1/videos/:categoryId/:videoId", async (c) => {
   }
 });
 // Delete video
-app.delete("/make-server-a8898ff1/videos/:categoryId/:videoId", async (c) => {
+app.delete("/make-server-a8898ff1/videos/:categoryId/:videoId", async (c)=>{
   try {
     const authHeader = c.req.header("Authorization");
     if (!authHeader) {
@@ -991,7 +991,7 @@ app.delete("/make-server-a8898ff1/videos/:categoryId/:videoId", async (c) => {
     const categoryId = c.req.param("categoryId");
     const videoId = c.req.param("videoId");
     const videosData = await kv.get(`videos_${categoryId}`) || [];
-    const filteredVideos = videosData.filter((video) => video.id !== videoId);
+    const filteredVideos = videosData.filter((video)=>video.id !== videoId);
     if (filteredVideos.length === videosData.length) {
       return c.json({
         error: "영상을 찾을 수 없습니다."
@@ -1009,7 +1009,7 @@ app.delete("/make-server-a8898ff1/videos/:categoryId/:videoId", async (c) => {
   }
 });
 // Save user progress
-app.post("/make-server-a8898ff1/progress", async (c) => {
+app.post("/make-server-a8898ff1/progress", async (c)=>{
   try {
     const { id, videoId, categoryId, progress, watchTime } = await c.req.json();
     const progressKey = `progress_${id}_${videoId}`;
@@ -1033,11 +1033,11 @@ app.post("/make-server-a8898ff1/progress", async (c) => {
   }
 });
 // Get user progress
-app.get("/make-server-a8898ff1/progress/:id", async (c) => {
+app.get("/make-server-a8898ff1/progress/:id", async (c)=>{
   try {
     const id = c.req.param("id");
     const progressEntries = await kv.getByPrefix(`progress_${id}_`);
-    const progressData = progressEntries.map((entry) => parseKvValue(entry.value)).filter(Boolean);
+    const progressData = progressEntries.map((entry)=>parseKvValue(entry.value)).filter(Boolean);
     return c.json({
       progress: progressData
     });
@@ -1049,7 +1049,7 @@ app.get("/make-server-a8898ff1/progress/:id", async (c) => {
   }
 });
 // Get all user progress for admin
-app.get("/make-server-a8898ff1/admin/progress", async (c) => {
+app.get("/make-server-a8898ff1/admin/progress", async (c)=>{
   try {
     const authHeader = c.req.header("Authorization");
     if (!authHeader) {
@@ -1058,7 +1058,7 @@ app.get("/make-server-a8898ff1/admin/progress", async (c) => {
       }, 401);
     }
     const progressEntries = await kv.getByPrefix("progress_");
-    const allProgress = progressEntries.map((entry) => parseKvValue(entry.value)).filter(Boolean);
+    const allProgress = progressEntries.map((entry)=>parseKvValue(entry.value)).filter(Boolean);
     return c.json({
       progress: allProgress
     });

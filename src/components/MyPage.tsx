@@ -5,7 +5,7 @@ import { useWatchProgress } from '../hooks/useWatchProgress';
 import { Video } from '../types/video';
 import { useEffect } from 'react';
 import logo from "../assets/logo.png";
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { Progress } from './ui/progress';
 
@@ -67,6 +67,34 @@ const MyPage: React.FC<MyPageProps> = ({ videosByCategory, onBack }) => {
 
         fetchLogs();
     }, [employeeId, yearMonth]);
+    // Optional forced attendance dates for testing/dev. Supported sources (in priority):
+    // 1) window.__FORCED_ATTENDANCE_DATES__ = ['YYYY-MM-DD','YYYY-MM-DD']
+    // 2) localStorage.forceAttendanceDates = JSON.stringify([...]) or comma-separated string
+    const forcedRaw = typeof window !== 'undefined' ? (window as any).__FORCED_ATTENDANCE_DATES__ ?? localStorage.getItem('forceAttendanceDates') : null;
+
+    const forcedDatesSet: Set<string> = React.useMemo(() => {
+        if (!forcedRaw) return new Set();
+        try {
+            if (Array.isArray(forcedRaw)) {
+                return new Set(forcedRaw.map((d: any) => String(d).slice(0, 10)));
+            }
+            // try parse JSON
+            if (typeof forcedRaw === 'string') {
+                const trimmed = forcedRaw.trim();
+                if (trimmed.startsWith('[')) {
+                    const parsed = JSON.parse(trimmed);
+                    if (Array.isArray(parsed)) return new Set(parsed.map((d: any) => String(d).slice(0, 10)));
+                }
+                // comma-separated fallback
+                return new Set(trimmed.split(',').map(s => s.trim()).filter(Boolean).map(s => s.slice(0, 10)));
+            }
+        } catch (e) {
+            console.warn('Failed to parse forced attendance dates', e);
+        }
+        return new Set();
+    }, [forcedRaw]);
+
+    const logsSet = React.useMemo(() => new Set(logs.map(l => l.slice(0, 10))), [logs]);
     const toggleAttendance = async (newState: boolean) => {
         if (!user) return;
 
@@ -155,7 +183,7 @@ const MyPage: React.FC<MyPageProps> = ({ videosByCategory, onBack }) => {
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
             {/* 메인 컨텐츠 */}
-            <main className="container mx-auto px-4 py-8 pt-24">
+            <main className="container mx-auto px-4 pt-24">
                 {/* 환영 섹션 */}
                 <div className="mb-8 text-center">
                     <div className="mb-6">
@@ -177,31 +205,31 @@ const MyPage: React.FC<MyPageProps> = ({ videosByCategory, onBack }) => {
 
                 {/* 출석 달력 카드 */}
                 <div className="mb-8">
-                    <div className="relative overflow-hidden rounded-2xl p-6 shadow-lg bg-gradient-to-br from-blue-500 via-indigo-500 to-purple-500 hover:scale-[1.02] transition-all duration-300">
+                    <div className="relative overflow-hidden rounded-2xl p-4 shadow-lg bg-gradient-to-br from-blue-500 via-indigo-500 to-purple-500 hover:scale-[1.02] transition-all duration-300">
                         <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/10 pointer-events-none"></div>
                         <div className="relative z-10">
                             <h3 className="text-xl font-bold text-slate-800 mb-4">출석 달력</h3>
-                            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                            <div className="flex flex-col flex-column items-center justify-between gap-3 mb-4">
                                 <div className="flex items-center gap-2">
                                     <Button size="sm" variant="outline" onClick={() => {
                                         const [y, m] = yearMonth.split('-').map(Number);
                                         const prev = new Date(y, m - 2);
                                         setYearMonth(`${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`);
-                                    }} className="bg-white/20 hover:bg-white/30 text-slate-800 border-white/30">이전 달</Button>
+                                    }} className="bg-white/20 hover:bg-white/30 text-slate-800 border-white/30"><ArrowLeft /></Button>
                                     <div className="font-medium text-slate-800 text-lg">{yearMonth}</div>
                                     <Button size="sm" variant="outline" onClick={() => {
                                         const [y, m] = yearMonth.split('-').map(Number);
                                         const next = new Date(y, m);
                                         setYearMonth(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`);
-                                    }} className="bg-white/20 hover:bg-white/30 text-slate-800 border-white/30">다음 달</Button>
+                                    }} className="bg-white/20 hover:bg-white/30 text-slate-800 border-white/30"><ArrowRight /></Button>
                                 </div>
 
-                                <div className="flex items-center gap-4">
-                                    <div className="text-slate-800 text-sm">출석률 ({yearMonth})</div>
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <div className="text-slate-800 text-sm whitespace-nowrap max-w-[5.5rem] truncate">출석률</div>
                                     <div className="font-semibold text-slate-800 text-lg">{attendanceRate}%</div>
-                                    <div className="w-40 md:w-64">
-                                        <Progress value={attendanceRate} className="h-3" />
-                                    </div>
+                                </div>
+                                <div className="w-64">
+                                    <Progress value={attendanceRate} className="h-3" />
                                 </div>
                             </div>
                             <div className="bg-white rounded-lg p-4">
@@ -230,8 +258,8 @@ const MyPage: React.FC<MyPageProps> = ({ videosByCategory, onBack }) => {
                                                             cells.push(<td key={`empty-${row}-${col}`} className="h-10 min-w-[40px]"></td>);
                                                         } else {
                                                             const iso = new Date(year, month, dayIndex).toISOString().slice(0, 10);
-                                                            // For testing: force today's date to appear as checked (동그라미 표시)
-                                                            const checked = new Set(logs.map(l => l.slice(0, 10))).has(iso) || iso === new Date().toISOString().slice(0, 10);
+                                                            // Checked if there is a real attendance log OR if a forced test date is set.
+                                                            const checked = logsSet.has(iso) || forcedDatesSet.has(iso);
                                                             const isToday = iso === new Date().toISOString().slice(0, 10);
                                                             cells.push(
                                                                 <td key={`day-${dayIndex}`} className="text-center h-10 min-w-[40px]">
@@ -261,7 +289,7 @@ const MyPage: React.FC<MyPageProps> = ({ videosByCategory, onBack }) => {
 
                 {/* 평균 시청률 카드 */}
                 <div className="mb-8">
-                    <div className="relative overflow-hidden rounded-2xl p-6 shadow-lg bg-gradient-to-br from-orange-500 via-red-500 to-pink-500 hover:scale-[1.02] transition-all duration-300">
+                    <div className="relative overflow-hidden rounded-2xl p-4 shadow-lg bg-gradient-to-br from-orange-500 via-red-500 to-pink-500 hover:scale-[1.02] transition-all duration-300">
                         <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/10 pointer-events-none"></div>
                         <div className="relative z-10">
                             <h3 className="text-xl font-bold mb-4">전체 평균 시청률</h3>

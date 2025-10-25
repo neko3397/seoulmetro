@@ -169,9 +169,57 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
           }
         } else {
           console.warn('Attendance sync failed with status', attendRes.status);
+          // Fallback: try to create an attendance log entry which doesn't require a user record
+          try {
+            const logRes = await fetch(
+              `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/users/${normalizedEmployeeId}/attendance/log?v=${Date.now()}`,
+              {
+                method: 'POST',
+                cache: 'no-store',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${publicAnonKey}`,
+                  'Cache-Control': 'no-cache'
+                },
+                body: JSON.stringify({ timestamp: new Date().toISOString() })
+              }
+            );
+
+            if (logRes.ok) {
+              console.log('Attendance log created as fallback');
+            } else {
+              console.warn('Attendance log fallback failed with status', logRes.status);
+            }
+          } catch (e) {
+            console.error('Attendance log fallback error:', e);
+          }
         }
       } catch (e) {
         console.error('Attendance sync error:', e);
+        // On network/error, attempt to write an attendance log as a best-effort fallback
+        try {
+          const logRes = await fetch(
+            `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/users/${normalizedEmployeeId}/attendance/log?v=${Date.now()}`,
+            {
+              method: 'POST',
+              cache: 'no-store',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${publicAnonKey}`,
+                'Cache-Control': 'no-cache'
+              },
+              body: JSON.stringify({ timestamp: new Date().toISOString() })
+            }
+          );
+
+          if (logRes.ok) {
+            console.log('Attendance log created as fallback after error');
+          } else {
+            console.warn('Attendance log fallback failed with status', logRes.status);
+          }
+        } catch (err) {
+          console.error('Attendance log fallback error after sync exception:', err);
+        }
       }
 
       onLogin(userData);

@@ -61,8 +61,9 @@ export function UserProgressManagement() {
         map[progress.id].name = progress.name;
       }
 
-      if (progress.employeeId && !map[progress.employeeId].employeeId) {
-        map[progress.employeeId].employeeId = progress.employeeId;
+      // progress entries use progress.id as the user key (employeeId), so store employeeId under that key
+      if (progress.employeeId && !map[progress.id].employeeId) {
+        map[progress.id].employeeId = progress.employeeId;
       }
     });
 
@@ -154,7 +155,36 @@ export function UserProgressManagement() {
       console.log('📊 Progress data loaded:', progressData);
       console.log('📊 Number of progress records:', progressData.progress?.length || 0);
 
-      setAllProgress(progressData.progress || []);
+      // diagnostic log: show a small sample of progress entries to help debug zero-percent issue
+      console.log('📊 Progress sample (first 10):', (progressData.progress || []).slice(0, 10));
+
+      // If the admin/progress endpoint returned no entries, fallback to using the
+      // embedded progress arrays inside the `users` response which is populated
+      // above. Some deployments may not expose admin/progress correctly but the
+      // `users` endpoint still contains embedded progress data.
+      if (!Array.isArray(progressData.progress) || (progressData.progress || []).length === 0) {
+        const fallbackFromUsers: UserProgress[] = [];
+        for (const u of usersData.users || []) {
+          const entries = Array.isArray(u.progress) ? u.progress : [];
+          for (const p of entries) {
+            fallbackFromUsers.push({
+              id: u.employeeId || u.id,
+              name: u.name,
+              employeeId: u.employeeId,
+              videoId: p.videoId,
+              categoryId: p.categoryId,
+              progress: typeof p.progress === 'number' ? p.progress : Number(p.progress) || 0,
+              watchTime: typeof p.watchTime === 'number' ? p.watchTime : p.watchTime ? Number(p.watchTime) : 0,
+              lastWatched: p.lastWatched,
+            });
+          }
+        }
+
+        console.log('⚠️ admin/progress returned empty — falling back to embedded user.progress (sample 10):', fallbackFromUsers.slice(0, 10));
+        setAllProgress(fallbackFromUsers);
+      } else {
+        setAllProgress(progressData.progress || []);
+      }
     } catch (error) {
       console.error('❌ Error loading data:', error);
       // Fallback to demo mode
@@ -421,7 +451,7 @@ export function UserProgressManagement() {
                           <div className="space-y-1">
                             <Progress value={stats.avgProgress} className="w-20" />
                             <span className="text-xs text-gray-600">
-                              {Math.round(stats.avgProgress)}%
+                              {Number.isFinite(stats.avgProgress) ? stats.avgProgress.toFixed(1) + '%' : '-'}
                             </span>
                           </div>
                         </TableCell>
@@ -490,7 +520,7 @@ export function UserProgressManagement() {
                           <div className="space-y-1">
                             <Progress value={progress.progress} className="w-24" />
                             <span className="text-xs text-gray-600">
-                              {Math.round(progress.progress)}%
+                              {typeof progress.progress === 'number' ? progress.progress.toFixed(1) + '%' : '-'}
                             </span>
                           </div>
                         </TableCell>

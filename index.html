@@ -26,6 +26,22 @@
 <body>
   <div id="root"></div>
   <script type="module" src="/src/main.tsx"></script>
+  <!--
+    Optional: Force multiple attendance dates for all clients (testing/dev).
+    Set an array of ISO dates (YYYY-MM-DD). Example:
+    <script>window.__FORCED_ATTENDANCE_DATES__ = ['2025-10-24','2025-10-25'];</script>
+
+    You can also persist across reloads by setting localStorage key
+    `forceAttendanceDates` to a JSON array string or comma-separated dates.
+  -->
+
+  <script>
+    // Example (empty by default). Replace or inject during deployment.
+    // window.__FORCED_ATTENDANCE_DATES__ = ['2025-10-12', '2025-10-14', '2025-10-16', '2025-10-17', '2025-10-20', '2025-10-21', '2025-10-22', '2025-10-23', '2025-10-24', '2025-10-26'];
+
+    // If you need to enable multiple dates without editing this file, run in console:
+    // localStorage.setItem('forceAttendanceDates', JSON.stringify(['2025-10-24','2025-10-25']))
+  </script>
 </body>
 
 </html>
