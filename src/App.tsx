@@ -44,14 +44,33 @@ const CARD_TRANSITION_DURATION = 420;
 const PAGE_TRANSITION_DURATION = 260;
 
 export default function App() {
-  const [currentView, setCurrentView] =
-    useState<ViewState>("userLogin");
+  const [currentUser, setCurrentUser] = useState<any>(() => {
+    try {
+      const savedUser = localStorage.getItem("currentUser");
+      return savedUser ? JSON.parse(savedUser) : null;
+    } catch (error) {
+      console.error("Failed to parse saved user:", error);
+      localStorage.removeItem("currentUser");
+      return null;
+    }
+  });
+
+  const [currentView, setCurrentView] = useState<ViewState>(() => {
+    const savedUser = localStorage.getItem("currentUser");
+    if (savedUser) {
+      if (typeof history !== 'undefined' && history.state && history.state.view) {
+        return history.state.view;
+      }
+      return "topics";
+    }
+    return "userLogin";
+  });
+
   const [selectedTopicId, setSelectedTopicId] =
     useState<string>("");
   const [selectedVideo, setSelectedVideo] =
     useState<Video | null>(null);
   const [adminUser, setAdminUser] = useState<any>(null);
-  const [currentUser, setCurrentUser] = useState<any>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [videosByCategory, setVideosByCategory] = useState<Record<string, Video[]>>({});

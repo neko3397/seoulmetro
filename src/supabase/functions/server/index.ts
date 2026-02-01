@@ -47,6 +47,10 @@ interface StoredUserRecord {
   lastLoginAt: string;
   // Optional embedded progress entries to keep related data together
   progress?: UserProgressEntry[];
+  // attendance flag for UI quick checks
+  attendance?: boolean;
+  // optional list of attended dates in YYYY-MM-DD
+  attendanceDates?: string[];
 }
 
 interface UserProgressEntry {
@@ -204,6 +208,20 @@ app.post("/make-server-a8898ff1/users/:employeeId/attendance", async (c: any) =>
       updatedAt: new Date().toISOString(),
     };
 
+    // If marking attendance true, also record today's date into attendanceDates
+    if (attendance) {
+      const today = new Date().toISOString().slice(0, 10);
+      updated.attendanceDates = Array.isArray(updated.attendanceDates) ? updated.attendanceDates : [];
+      if (!updated.attendanceDates.includes(today)) updated.attendanceDates.push(today);
+    }
+
+    // Log the updated record for debugging (will appear in function logs)
+    try {
+      console.log(`Saving attendance for ${employeeId}:`, JSON.stringify(updated));
+    } catch (e) {
+      // ignore logging errors
+    }
+
     await saveUserRecord(updated);
 
     return c.json({ success: true, user: updated });
@@ -233,6 +251,27 @@ app.post("/make-server-a8898ff1/users/:employeeId/attendance/log", async (c: any
     const key = `attendance_log_${employeeId}_${Date.now()}`;
     const value = { employeeId, timestamp: entryTime };
     await kv.set(key, value);
+
+    // Also update the user's record to reflect attendance (attendance flag + date list)
+    try {
+      const existingUser = await getUserRecord(employeeId);
+      if (existingUser) {
+        // mark boolean
+        existingUser.attendance = true;
+        existingUser.updatedAt = new Date().toISOString();
+
+        // maintain attendanceDates array with YYYY-MM-DD entries
+        const dateOnly = new Date(entryTime).toISOString().slice(0, 10);
+        existingUser.attendanceDates = Array.isArray(existingUser.attendanceDates) ? existingUser.attendanceDates : [];
+        if (!existingUser.attendanceDates.includes(dateOnly)) {
+          existingUser.attendanceDates.push(dateOnly);
+        }
+
+        await saveUserRecord(existingUser as StoredUserRecord);
+      }
+    } catch (e) {
+      console.warn('Failed to update user_record with attendance:', e);
+    }
 
     return c.json({ success: true, entry: value });
   } catch (error) {
@@ -938,6 +977,31 @@ app.get("/make-server-a8898ff1/users", async (c: any) => {
   }
 });
 
+// Get a single user record (useful for debugging / verification)
+app.get("/make-server-a8898ff1/users/:employeeId/record", async (c: any) => {
+  try {
+    const authHeader = c.req.header("Authorization");
+    if (!authHeader) {
+      return c.json({ error: "인증이 필요합니다." }, 401);
+    }
+
+    const employeeId = c.req.param("employeeId");
+    if (!employeeId) {
+      return c.json({ error: "사번이 필요합니다." }, 400);
+    }
+
+    const record = await getUserRecord(employeeId);
+    if (!record) {
+      return c.json({ error: "사용자를 찾을 수 없습니다." }, 404);
+    }
+
+    return c.json({ user: record });
+  } catch (error) {
+    console.error("Error fetching user record:", error);
+    return c.json({ error: "사용자 조회 중 오류가 발생했습니다." }, 500);
+  }
+});
+
 // Get categories
 app.get("/make-server-a8898ff1/categories", async (c: any) => {
   try {
@@ -1029,20 +1093,15 @@ app.put("/make-server-a8898ff1/categories/:id", async (c: any) => {
     }
 
     const categoryId = c.req.param("id");
-    const { title, subtitle, image, description } =
-      await c.req.json();
+    const { title, subtitle, image, description } = await c.req.json();
 
-    const categoriesData =
-      (await kv.get("education_categories")) || [];
+    const categoriesData = (await kv.get("education_categories")) || [];
     const categoryIndex = categoriesData.findIndex(
       (cat: any) => cat.id === categoryId,
     );
 
     if (categoryIndex === -1) {
-      return c.json(
-        { error: "카테고리를 찾을 수 없습니다." },
-        404,
-      );
+      return c.json({ error: "카테고리를 찾을 수 없습니다." }, 404);
     }
 
     categoriesData[categoryIndex] = {
@@ -1055,16 +1114,10 @@ app.put("/make-server-a8898ff1/categories/:id", async (c: any) => {
 
     await kv.set("education_categories", categoriesData);
 
-    return c.json({
-      success: true,
-      category: categoriesData[categoryIndex],
-    });
+    return c.json({ success: true, category: categoriesData[categoryIndex] });
   } catch (error) {
     console.error("Error updating category:", error);
-    return c.json(
-      { error: "카테고리 수정 중 오류가 발생했습니다." },
-      500,
-    );
+    return c.json({ error: "카테고리 수정 중 오류가 발생했습니다." }, 500);
   }
 });
 
@@ -1779,6 +1832,12 @@ app.post("/make-server-a8898ff1/admin/create-attendance-logs", async (c: any) =>
             if (existingUser) {
               existingUser.attendance = true;
               existingUser.updatedAt = new Date().toISOString();
+              // add date to attendanceDates array
+              const dateOnly = new Date(ts).toISOString().slice(0, 10);
+              existingUser.attendanceDates = Array.isArray(existingUser.attendanceDates) ? existingUser.attendanceDates : [];
+              if (!existingUser.attendanceDates.includes(dateOnly)) {
+                existingUser.attendanceDates.push(dateOnly);
+              }
               await saveUserRecord(existingUser as StoredUserRecord);
             }
           } catch (e) {
@@ -1795,6 +1854,91 @@ app.post("/make-server-a8898ff1/admin/create-attendance-logs", async (c: any) =>
   } catch (error) {
     console.error('Error creating attendance logs:', error);
     return c.json({ error: '출석 로그 생성 중 오류가 발생했습니다.' }, 500);
+  }
+});
+
+// Admin utility: append attendance dates to existing user_record entries
+// Body: { dates: string[] (YYYY-MM-DD), employeeIds?: string[], dryRun?: boolean }
+app.post("/make-server-a8898ff1/admin/add-attendance-dates", async (c) => {
+  try {
+    const authHeader = c.req.header("Authorization");
+    if (!authHeader) {
+      return c.json({ error: "인증이 필요합니다." }, 401);
+    }
+    const body = await (async () => {
+      try {
+        return await c.req.json();
+      } catch (e) {
+        return {};
+      }
+    })();
+    const datesRaw = body?.dates || body?.date || [];
+    const employeeIds = Array.isArray(body?.employeeIds) ? body.employeeIds.map((v) => String(v).trim()) : undefined;
+    const dryRun = Boolean(body?.dryRun);
+    if (!datesRaw || (Array.isArray(datesRaw) && datesRaw.length === 0)) {
+      return c.json({ error: 'dates 배열을 하나 이상 전달해주세요. 예: ["2025-10-25"]' }, 400);
+    }
+    const dates = Array.isArray(datesRaw) ? datesRaw.map((d) => String(d).slice(0, 10)) : [String(datesRaw).slice(0, 10)];
+
+    // Determine targets
+    let targets = [];
+    if (employeeIds && employeeIds.length > 0) {
+      targets = employeeIds.map((id) => ({ employeeId: String(id).trim() }));
+    } else {
+      const all = await getAllUserRecords();
+      targets = all.map((u) => ({ employeeId: u.employeeId, name: u.name }));
+    }
+
+    let updatedCount = 0;
+    const sampleUpdated = [];
+    const errors = [];
+
+    for (const t of targets) {
+      const employeeId = String(t.employeeId).trim();
+      if (!employeeId) continue;
+      try {
+        const existingUser = await getUserRecord(employeeId);
+        if (!existingUser) {
+          // skip users that don't have a canonical user_record
+          continue;
+        }
+
+        const existingDates = Array.isArray(existingUser.attendanceDates) ? existingUser.attendanceDates.map(String) : [];
+        const merged = Array.from(new Set([...existingDates, ...dates.map(String)])).sort();
+
+        if (dryRun) {
+          // simulate
+          if (merged.length > existingDates.length) {
+            updatedCount++;
+            if (sampleUpdated.length < 20) sampleUpdated.push(employeeId);
+          }
+          continue;
+        }
+
+        // apply changes
+        existingUser.attendanceDates = merged;
+        existingUser.attendance = true;
+        existingUser.updatedAt = new Date().toISOString();
+        await saveUserRecord(existingUser);
+        updatedCount++;
+        if (sampleUpdated.length < 20) sampleUpdated.push(employeeId);
+      } catch (e) {
+        errors.push({ employeeId, error: String(e) });
+      }
+    }
+
+    return c.json({
+      success: true,
+      dryRun: Boolean(dryRun),
+      dates,
+      targetCount: targets.length,
+      updatedCount,
+      sampleUpdated,
+      errors
+    });
+  } catch (error) {
+    console.error('Error appending attendance dates:', error);
+    return c.json({ error: '출석일 추가 중 오류가 발생했습니다.' }, 500);
   }
 });
 

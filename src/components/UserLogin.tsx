@@ -168,7 +168,8 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
             localStorage.setItem("currentUser", JSON.stringify(attendData.user));
           }
         } else {
-          console.warn('Attendance sync failed with status', attendRes.status);
+          const errorText = await attendRes.text().catch(() => '');
+          console.warn('Attendance sync failed with status', attendRes.status, errorText);
           // Fallback: try to create an attendance log entry which doesn't require a user record
           try {
             const logRes = await fetch(
@@ -187,8 +188,17 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
 
             if (logRes.ok) {
               console.log('Attendance log created as fallback');
+              // Ensure local user reflects attendance so UI updates without a reload
+              try {
+                (userData as any).attendance = true;
+                localStorage.setItem(userStorageKey, JSON.stringify(userData));
+                localStorage.setItem('currentUser', JSON.stringify(userData));
+              } catch (e) {
+                console.warn('Failed to update local user after fallback log', e);
+              }
             } else {
-              console.warn('Attendance log fallback failed with status', logRes.status);
+              const txt = await logRes.text().catch(() => '');
+              console.warn('Attendance log fallback failed with status', logRes.status, txt);
             }
           } catch (e) {
             console.error('Attendance log fallback error:', e);
@@ -214,8 +224,16 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
 
           if (logRes.ok) {
             console.log('Attendance log created as fallback after error');
+            try {
+              (userData as any).attendance = true;
+              localStorage.setItem(userStorageKey, JSON.stringify(userData));
+              localStorage.setItem('currentUser', JSON.stringify(userData));
+            } catch (err) {
+              console.warn('Failed to update local user after fallback log (post-error)', err);
+            }
           } else {
-            console.warn('Attendance log fallback failed with status', logRes.status);
+            const txt = await logRes.text().catch(() => '');
+            console.warn('Attendance log fallback failed with status', logRes.status, txt);
           }
         } catch (err) {
           console.error('Attendance log fallback error after sync exception:', err);
