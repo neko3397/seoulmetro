@@ -66,10 +66,20 @@ export default function App() {
     return "userLogin";
   });
 
-  const [selectedTopicId, setSelectedTopicId] =
-    useState<string>("");
-  const [selectedVideo, setSelectedVideo] =
-    useState<Video | null>(null);
+  const [selectedTopicId, setSelectedTopicId] = useState<string>(() => {
+    if (typeof history !== 'undefined' && history.state && history.state.topicId) {
+      return history.state.topicId;
+    }
+    return "";
+  });
+
+  const [selectedVideo, setSelectedVideo] = useState<Video | null>(() => {
+    if (typeof history !== 'undefined' && history.state && history.state.video) {
+      return history.state.video;
+    }
+    return null;
+  });
+
   const [adminUser, setAdminUser] = useState<any>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,22 +89,34 @@ export default function App() {
   const [pageTransitionState, setPageTransitionState] = useState<"idle" | "fade-out" | "fade-in">("idle");
   const transitionTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  const navigateTo = (view: ViewState) => {
+  const navigateTo = (view: ViewState, context: { topicId?: string; video?: Video | null } = {}) => {
     setCurrentView(view);
-    history.pushState({ view }, '', window.location.href);
+    const newState = {
+      view,
+      topicId: context.topicId !== undefined ? context.topicId : selectedTopicId,
+      video: context.video !== undefined ? context.video : selectedVideo,
+    };
+    history.pushState(newState, '', window.location.href);
   };
 
   // 뒤로가기 버튼 처리
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
       // If the popped state contains a view, use it. Otherwise fall back to topics.
-      const view = event.state && event.state.view ? event.state.view : "topics";
+      const state = event.state || {};
+      const view = state.view || "topics";
       setCurrentView(view);
+      setSelectedTopicId(state.topicId || "");
+      setSelectedVideo(state.video || null);
     };
 
     // Ensure the initial history entry has a view so back/forward work predictably.
     try {
-      history.replaceState({ view: currentView }, '', window.location.href);
+      history.replaceState({
+        view: currentView,
+        topicId: selectedTopicId,
+        video: selectedVideo
+      }, '', window.location.href);
     } catch (e) {
       // ignore (some environments may not allow replaceState)
     }
@@ -102,7 +124,7 @@ export default function App() {
     window.addEventListener('popstate', handlePopState);
 
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  }, []); // Empty dependency array is fine as we want this to run once, but be careful with closure if we used state inside handlePopState (we don't much)
 
   // 페이지 로드 시 저장된 사용자 정보 확인
   useEffect(() => {
@@ -216,7 +238,7 @@ export default function App() {
     }
 
     queueTransitionTimer(() => {
-      navigateTo("videoList");
+      navigateTo("videoList", { topicId });
       setActiveCard(null);
       setPageTransitionState("fade-in");
 
@@ -232,7 +254,7 @@ export default function App() {
     setPageTransitionState("fade-out");
 
     queueTransitionTimer(() => {
-      navigateTo("videoPlayer");
+      navigateTo("videoPlayer", { topicId: selectedTopicId, video });
       setPageTransitionState("fade-in");
 
       queueTransitionTimer(() => {
@@ -246,7 +268,7 @@ export default function App() {
     setPageTransitionState("fade-out");
 
     queueTransitionTimer(() => {
-      navigateTo("topics");
+      navigateTo("topics", { topicId: "", video: null });
       setSelectedTopicId("");
       setSelectedVideo(null);
       setActiveCard(null);
@@ -263,7 +285,7 @@ export default function App() {
     setPageTransitionState("fade-out");
 
     queueTransitionTimer(() => {
-      navigateTo("videoList");
+      navigateTo("videoList", { topicId: selectedTopicId, video: null });
       setSelectedVideo(null);
       setPageTransitionState("fade-in");
 
@@ -279,7 +301,7 @@ export default function App() {
     setPageTransitionState("fade-out");
 
     queueTransitionTimer(() => {
-      navigateTo("adminDashboard");
+      navigateTo("adminDashboard", { topicId: "", video: null });
       setPageTransitionState("fade-in");
 
       queueTransitionTimer(() => {
@@ -294,7 +316,7 @@ export default function App() {
     setPageTransitionState("fade-out");
 
     queueTransitionTimer(() => {
-      navigateTo("topics");
+      navigateTo("topics", { topicId: "", video: null });
       setPageTransitionState("fade-in");
 
       queueTransitionTimer(() => {
@@ -309,7 +331,7 @@ export default function App() {
     setPageTransitionState("fade-out");
 
     queueTransitionTimer(() => {
-      navigateTo("topics");
+      navigateTo("topics", { topicId: "", video: null });
       setPageTransitionState("fade-in");
 
       queueTransitionTimer(() => {
@@ -325,7 +347,7 @@ export default function App() {
     setPageTransitionState("fade-out");
 
     queueTransitionTimer(() => {
-      navigateTo("userLogin");
+      navigateTo("userLogin", { topicId: "", video: null });
       setPageTransitionState("fade-in");
 
       queueTransitionTimer(() => {
@@ -340,7 +362,7 @@ export default function App() {
     setPageTransitionState("fade-out");
 
     queueTransitionTimer(() => {
-      navigateTo("myPage");
+      navigateTo("myPage", { topicId: "", video: null });
       setPageTransitionState("fade-in");
 
       queueTransitionTimer(() => {
