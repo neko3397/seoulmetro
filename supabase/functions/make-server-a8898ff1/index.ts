@@ -21,10 +21,9 @@ app.use(
   "*",
   bearerAuth({
     verifyToken: async (token, c) => {
-      // Implement your token verification logic here, e.g., using Supabase
-      // const { data: { user }, error } = await supabase.auth.getUser(token);
-      // return !error && user;
-      return true; // Placeholder for demonstration
+      const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+      if (!token || !anonKey) return false;
+      return token === anonKey;
     },
   }),
 );
@@ -419,6 +418,10 @@ async function initializeImageBucket() {
 console.log("Starting server initialization...");
 (async () => {
   try {
+    const migrationResult = await kv.migrateLegacyKvToRelational();
+    console.log(
+      `Legacy KV migration done (migrated=${migrationResult.migrated}, skipped=${migrationResult.skipped})`,
+    );
     await initializeAuthorizedEmployees();
     await initializeDefaultAdmin();
     await initializeDefaultData();
