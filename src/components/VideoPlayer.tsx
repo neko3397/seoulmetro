@@ -31,6 +31,23 @@ export const VideoPlayer = ({ video, categoryId }: VideoPlayerProps) => {
   const { updateProgress } = useWatchProgress();
   const progressUpdateRef = useRef<NodeJS.Timeout>();
 
+  const getCurrentPlaybackSeconds = () => {
+    if (video.videoType === 'youtube' && playerRef.current && playerRef.current.getCurrentTime) {
+      return Math.floor(playerRef.current.getCurrentTime());
+    }
+    if (video.videoType === 'local' && videoRef.current) {
+      return Math.floor(videoRef.current.currentTime);
+    }
+    return 0;
+  };
+
+  const saveProgressSnapshot = () => {
+    const currentSeconds = getCurrentPlaybackSeconds();
+    if (currentSeconds > 0) {
+      updateProgress(video.id, currentSeconds, video.duration, categoryId);
+    }
+  };
+
   // YouTube API 로드 (YouTube 영상인 경우)
   useEffect(() => {
     if (video.videoType !== 'youtube') return;
@@ -74,7 +91,7 @@ export const VideoPlayer = ({ video, categoryId }: VideoPlayerProps) => {
             startProgressTracking();
           } else {
             setIsPlaying(false);
-            stopProgressTracking();
+            stopProgressTracking({ saveSnapshot: true });
           }
         }
       }
@@ -84,7 +101,7 @@ export const VideoPlayer = ({ video, categoryId }: VideoPlayerProps) => {
       if (playerRef.current) {
         playerRef.current.destroy();
       }
-      stopProgressTracking();
+      stopProgressTracking({ saveSnapshot: true });
     };
   }, [apiReady, video.youtubeId, video.videoType]);
 
@@ -109,7 +126,7 @@ export const VideoPlayer = ({ video, categoryId }: VideoPlayerProps) => {
 
     const handlePause = () => {
       setIsPlaying(false);
-      stopProgressTracking();
+      stopProgressTracking({ saveSnapshot: true });
     };
 
     const handleVolumeChange = () => {
@@ -129,7 +146,7 @@ export const VideoPlayer = ({ video, categoryId }: VideoPlayerProps) => {
       videoElement.removeEventListener('play', handlePlay);
       videoElement.removeEventListener('pause', handlePause);
       videoElement.removeEventListener('volumechange', handleVolumeChange);
-      stopProgressTracking();
+      stopProgressTracking({ saveSnapshot: true });
     };
   }, [video.videoType, video.videoUrl]);
 
@@ -157,7 +174,11 @@ export const VideoPlayer = ({ video, categoryId }: VideoPlayerProps) => {
     }, 5000); // 5초마다 업데이트
   };
 
-  const stopProgressTracking = () => {
+  const stopProgressTracking = (options?: { saveSnapshot?: boolean }) => {
+    if (options?.saveSnapshot) {
+      saveProgressSnapshot();
+    }
+
     if (progressUpdateRef.current) {
       clearInterval(progressUpdateRef.current);
       progressUpdateRef.current = undefined;

@@ -42,8 +42,36 @@ type ViewState =
 
 const CARD_TRANSITION_DURATION = 420;
 const PAGE_TRANSITION_DURATION = 260;
+const NAV_STATE_STORAGE_KEY = "app-navigation-state";
+
+interface NavigationState {
+  view?: ViewState;
+  topicId?: string;
+  video?: Video | null;
+}
+
+const readPersistedNavigationState = (): NavigationState => {
+  try {
+    const raw = sessionStorage.getItem(NAV_STATE_STORAGE_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) || {};
+  } catch (error) {
+    console.warn("Failed to parse persisted navigation state:", error);
+    return {};
+  }
+};
+
+const persistNavigationState = (state: NavigationState) => {
+  try {
+    sessionStorage.setItem(NAV_STATE_STORAGE_KEY, JSON.stringify(state));
+  } catch (error) {
+    console.warn("Failed to persist navigation state:", error);
+  }
+};
 
 export default function App() {
+  const restoredNavigationState = readPersistedNavigationState();
+
   const [currentUser, setCurrentUser] = useState<any>(() => {
     try {
       const savedUser = localStorage.getItem("currentUser");
@@ -61,6 +89,9 @@ export default function App() {
       if (typeof history !== 'undefined' && history.state && history.state.view) {
         return history.state.view;
       }
+      if (restoredNavigationState.view) {
+        return restoredNavigationState.view;
+      }
       return "topics";
     }
     return "userLogin";
@@ -70,12 +101,18 @@ export default function App() {
     if (typeof history !== 'undefined' && history.state && history.state.topicId) {
       return history.state.topicId;
     }
+    if (restoredNavigationState.topicId) {
+      return restoredNavigationState.topicId;
+    }
     return "";
   });
 
   const [selectedVideo, setSelectedVideo] = useState<Video | null>(() => {
     if (typeof history !== 'undefined' && history.state && history.state.video) {
       return history.state.video;
+    }
+    if (restoredNavigationState.video) {
+      return restoredNavigationState.video;
     }
     return null;
   });
@@ -96,6 +133,7 @@ export default function App() {
       topicId: context.topicId !== undefined ? context.topicId : selectedTopicId,
       video: context.video !== undefined ? context.video : selectedVideo,
     };
+    persistNavigationState(newState);
     history.pushState(newState, '', window.location.href);
   };
 
@@ -108,15 +146,22 @@ export default function App() {
       setCurrentView(view);
       setSelectedTopicId(state.topicId || "");
       setSelectedVideo(state.video || null);
+      persistNavigationState({
+        view,
+        topicId: state.topicId || "",
+        video: state.video || null,
+      });
     };
 
     // Ensure the initial history entry has a view so back/forward work predictably.
     try {
-      history.replaceState({
+      const stateToPersist = {
         view: currentView,
         topicId: selectedTopicId,
         video: selectedVideo
-      }, '', window.location.href);
+      };
+      persistNavigationState(stateToPersist);
+      history.replaceState(stateToPersist, '', window.location.href);
     } catch (e) {
       // ignore (some environments may not allow replaceState)
     }
@@ -125,6 +170,13 @@ export default function App() {
 
     return () => window.removeEventListener('popstate', handlePopState);
   }, []); // Empty dependency array is fine as we want this to run once, but be careful with closure if we used state inside handlePopState (we don't much)
+
+  // 새로고침 후 videoList로 복원된 경우, 카테고리 영상이 비어 있으면 해당 카테고리만 보강 로드
+  useEffect(() => {
+    if (currentView !== "videoList" || !selectedTopicId || videosLoading) return;
+    if (videosByCategory[selectedTopicId]) return;
+    loadVideosForCategory(selectedTopicId);
+  }, [currentView, selectedTopicId, videosByCategory, videosLoading]);
 
   // 페이지 로드 시 저장된 사용자 정보 확인
   useEffect(() => {
