@@ -212,6 +212,12 @@ app.post("/make-server-a8898ff1/users/:employeeId/attendance", async (c: any) =>
       const today = new Date().toISOString().slice(0, 10);
       updated.attendanceDates = Array.isArray(updated.attendanceDates) ? updated.attendanceDates : [];
       if (!updated.attendanceDates.includes(today)) updated.attendanceDates.push(today);
+
+      // Keep attendance calendar source in sync.
+      // Calendar reads from attendance logs, so write one deterministic per-day log.
+      const dayTimestamp = new Date(`${today}T12:00:00.000Z`).toISOString();
+      const attendanceKey = `attendance_log_${employeeId}_${today}`;
+      await kv.set(attendanceKey, { employeeId, timestamp: dayTimestamp });
     }
 
     // Log the updated record for debugging (will appear in function logs)
