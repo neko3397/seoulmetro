@@ -1,14 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { Button } from './ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { LogOut, Users, Video, FolderOpen, Settings, AlertCircle } from 'lucide-react';
-import { UserProgressManagement } from './UserProgressManagement';
-import { VideoManagement } from './VideoManagement';
-import { CategoryManagement } from './CategoryManagement';
-import { AdminManagement } from './AdminManagement';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
-import seoulMetroLogo from "../assets/logo.png"; // 타입 선언 추가 필요
+import React, { useEffect, useState } from "react";
+import { Button } from "./ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { LogOut, RefreshCcw } from "lucide-react";
+import { UserProgressManagement } from "./UserProgressManagement";
+import { VideoManagement } from "./VideoManagement";
+import { CategoryManagement } from "./CategoryManagement";
+import { AdminManagement } from "./AdminManagement";
+import { AuthorizedEmployeeManagement } from "./AuthorizedEmployeeManagement";
+import { CommunityManagement } from "./CommunityManagement";
+import { GuideManagement } from "./GuideManagement";
+import { AISettingsManagement } from "./AISettingsManagement";
+import { GoogleDriveSettings } from "./GoogleDriveSettings";
+import { OperationsOverview } from "./OperationsOverview";
+import seoulMetroLogo from "../assets/logo.png";
+import { apiRequest } from "../lib/api";
 
 interface AdminDashboardProps {
   admin: any;
@@ -16,124 +22,77 @@ interface AdminDashboardProps {
 }
 
 export function AdminDashboard({ admin, onLogout }: AdminDashboardProps) {
+  const [refreshToken, setRefreshToken] = useState(0);
   const [stats, setStats] = useState({
     totalUsers: 0,
     totalVideos: 0,
     totalCategories: 0,
-    totalProgress: 0
+    totalPosts: 0,
+    totalGuides: 0,
   });
-
-  useEffect(() => {
-    loadStats();
-  }, []);
 
   const loadStats = async () => {
     try {
-      // Get categories
-      const categoriesResponse = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/categories`,
-        {
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`
-          }
-        }
-      );
+      const [categoriesRes, usersRes, postsRes, guidesRes] = await Promise.all([
+        apiRequest("/categories"),
+        apiRequest("/users"),
+        apiRequest("/community/posts?includeDrafts=true"),
+        apiRequest("/guides?includeDrafts=true"),
+      ]);
+      const [categoriesData, usersData, postsData, guidesData] = await Promise.all([
+        categoriesRes.json(),
+        usersRes.json(),
+        postsRes.json(),
+        guidesRes.json(),
+      ]);
 
-      if (!categoriesResponse.ok) {
-        throw new Error('Failed to fetch categories');
-      }
-
-      const categoriesData = await categoriesResponse.json();
-
-      // Get all progress data
-      const progressResponse = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/admin/progress`,
-        {
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`
-          }
-        }
-      );
-
-      if (!progressResponse.ok) {
-        throw new Error('Failed to fetch progress');
-      }
-
-      const progressData = await progressResponse.json();
-
-      const usersResponse = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/users`,
-        {
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`
-          }
-        }
-      );
-
-      if (!usersResponse.ok) {
-        throw new Error('Failed to fetch users');
-      }
-
-      const usersData = await usersResponse.json();
-
-      // Calculate stats
       const categories = categoriesData.categories || [];
-      const allProgress = progressData.progress || [];
-
       let totalVideos = 0;
       for (const category of categories) {
-        const videosResponse = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/videos/${category.id}`,
-          {
-            headers: {
-              'Authorization': `Bearer ${publicAnonKey}`
-            }
-          }
-        );
-        if (videosResponse.ok) {
-          const videosData = await videosResponse.json();
-          totalVideos += (videosData.videos || []).length;
-        }
+        const videosRes = await apiRequest(`/videos/${category.id}`);
+        const videosData = await videosRes.json();
+        totalVideos += (videosData.videos || []).length;
       }
 
-      const uniqueUsers = usersData.users?.length || 0;
-
       setStats({
-        totalUsers: uniqueUsers,
+        totalUsers: usersData.users?.length || 0,
         totalVideos,
         totalCategories: categories.length,
-        totalProgress: allProgress.length
+        totalPosts: postsData.posts?.length || 0,
+        totalGuides: guidesData.guides?.length || 0,
       });
     } catch (error) {
-      console.error('Error loading stats:', error);
-      // Fallback to demo mode if server is unavailable
-      console.log('Server unavailable, falling back to demo mode');
-      setStats({
-        totalUsers: 5,
-        totalVideos: 8,
-        totalCategories: 3,
-        totalProgress: 12
-      });
+      console.error("Failed to load admin dashboard stats:", error);
     }
+  };
+
+  useEffect(() => {
+    loadStats();
+  }, [refreshToken]);
+
+  const handleUpdated = () => {
+    setRefreshToken((token) => token + 1);
   };
 
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-6 py-6">
-          <div className="flex justify-between items-center h-16">
+          <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-4">
-              <img
-                src={seoulMetroLogo}
-                alt="서울교통공사"
-                className="h-12 w-12"
-              />
+              <img src={seoulMetroLogo} alt="서울교통공사" className="h-12 w-12" />
               <div>
-                <h1 className="text-xl font-semibold text-gray-900">관리자 대시보드</h1>
-                <p className="text-sm text-gray-600">불안제로 관리 시스템</p>
+                <h1 className="text-xl font-semibold text-gray-900">관리자 운영 센터</h1>
+                <p className="text-sm text-gray-600">
+                  {admin.name} ({admin.employeeId})
+                </p>
               </div>
             </div>
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={handleUpdated}>
+                <RefreshCcw className="h-4 w-4 mr-2" />
+                새로고침
+              </Button>
               <Button variant="outline" size="sm" onClick={onLogout}>
                 <LogOut className="h-4 w-4 mr-2" />
                 로그아웃
@@ -143,90 +102,80 @@ export function AdminDashboard({ admin, onLogout }: AdminDashboardProps) {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Demo Mode Alert */}
-        {(projectId === 'placeholder-project-id' || publicAnonKey === 'placeholder-anon-key') && (
-          <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <div className="flex items-center">
-              <AlertCircle className="h-4 w-4 text-yellow-600 mr-2" />
-              <span className="text-sm text-yellow-800">
-                <strong>데모 모드:</strong> 백엔드가 연결되지 않아 데모 데이터를 표시합니다.
-                실제 배포 시에는 Supabase 설정이 필요합니다.
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">총 사용자</CardTitle>
-              <Users className="h-4 w-4 text-muted-foreground" />
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">사용자</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.totalUsers}</div>
-              <p className="text-xs text-muted-foreground">시청 기록이 있는 사용자</p>
-            </CardContent>
+            <CardContent className="text-2xl font-bold">{stats.totalUsers}</CardContent>
           </Card>
-
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">총 영상</CardTitle>
-              <Video className="h-4 w-4 text-muted-foreground" />
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">영상</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.totalVideos}</div>
-              <p className="text-xs text-muted-foreground">등록된 교육 영상</p>
-            </CardContent>
+            <CardContent className="text-2xl font-bold">{stats.totalVideos}</CardContent>
           </Card>
-
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">총 카테고리</CardTitle>
-              <FolderOpen className="h-4 w-4 text-muted-foreground" />
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">카테고리</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.totalCategories}</div>
-              <p className="text-xs text-muted-foreground">교육 카테고리</p>
-            </CardContent>
+            <CardContent className="text-2xl font-bold">{stats.totalCategories}</CardContent>
           </Card>
-
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">시청 기록</CardTitle>
-              <Settings className="h-4 w-4 text-muted-foreground" />
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">게시물</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.totalProgress}</div>
-              <p className="text-xs text-muted-foreground">총 시청 기록</p>
-            </CardContent>
+            <CardContent className="text-2xl font-bold">{stats.totalPosts}</CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">가이드북</CardTitle>
+            </CardHeader>
+            <CardContent className="text-2xl font-bold">{stats.totalGuides}</CardContent>
           </Card>
         </div>
 
-        {/* Management Tabs */}
-        <Tabs defaultValue="users" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="users">사용자 관리</TabsTrigger>
-            <TabsTrigger value="videos">영상 관리</TabsTrigger>
-            <TabsTrigger value="categories">카테고리 관리</TabsTrigger>
-            <TabsTrigger value="admins">관리자 관리</TabsTrigger>
+        <Tabs defaultValue="overview" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-7">
+            <TabsTrigger value="overview">운영 개요</TabsTrigger>
+            <TabsTrigger value="content">교육 콘텐츠</TabsTrigger>
+            <TabsTrigger value="community">커뮤니티</TabsTrigger>
+            <TabsTrigger value="guides">가이드북</TabsTrigger>
+            <TabsTrigger value="ai">AI 챗봇</TabsTrigger>
+            <TabsTrigger value="integrations">외부 연동</TabsTrigger>
+            <TabsTrigger value="system">시스템</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="users">
-            <UserProgressManagement />
+          <TabsContent value="overview">
+            <OperationsOverview refreshToken={refreshToken} />
           </TabsContent>
 
-          <TabsContent value="videos">
-            <VideoManagement onStatsUpdate={loadStats} />
+          <TabsContent value="content" className="space-y-6">
+            <CategoryManagement onStatsUpdate={handleUpdated} />
+            <VideoManagement onStatsUpdate={handleUpdated} />
           </TabsContent>
 
-          <TabsContent value="categories">
-            <CategoryManagement onStatsUpdate={loadStats} />
+          <TabsContent value="community">
+            <CommunityManagement admin={admin} onUpdated={handleUpdated} />
           </TabsContent>
 
-          <TabsContent value="admins">
+          <TabsContent value="guides">
+            <GuideManagement onUpdated={handleUpdated} />
+          </TabsContent>
+
+          <TabsContent value="ai">
+            <AISettingsManagement onUpdated={handleUpdated} />
+          </TabsContent>
+
+          <TabsContent value="integrations">
+            <GoogleDriveSettings onUpdated={handleUpdated} />
+          </TabsContent>
+
+          <TabsContent value="system" className="space-y-6">
+            <AuthorizedEmployeeManagement />
             <AdminManagement currentAdmin={admin} />
+            <UserProgressManagement />
           </TabsContent>
         </Tabs>
       </main>
