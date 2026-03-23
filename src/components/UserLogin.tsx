@@ -5,8 +5,9 @@ import { Label } from "./ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Alert, AlertDescription } from "./ui/alert";
 import { User, ArrowLeft } from "lucide-react";
-import seoulMetroLogo from "../assets/logo.png"; // 타입 선언 추가 필요
+import seoulMetroLogo from "../assets/logo.png";
 import { projectId, publicAnonKey } from "../utils/supabase/info";
+import { supabase } from "../utils/supabase/client";
 
 interface LoggedInUser {
   employeeId: string;
@@ -101,6 +102,27 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
       if (!isAuthorized) {
         setError("등록된 사번/이름이 아닙니다. 관리자에게 문의해주세요.");
         return;
+      }
+
+      // Supabase Auth 연동: 익명 로그인 및 사번 메타데이터 설정
+      try {
+        // 1. 익명 로그인 시도 (이미 로그인 되어 있을 수도 있음)
+        const { data: authData, error: authError } = await supabase.auth.signInAnonymously();
+        if (authError) throw authError;
+
+        // 2. 사용자 메타데이터에 사번 정보 기록 (RLS용)
+        const { error: updateError } = await supabase.auth.updateUser({
+          data: { employee_id: normalizedEmployeeId, full_name: normalizedName }
+        });
+        if (updateError) throw updateError;
+        
+        console.log("Supabase Auth session initialized with employee_id");
+      } catch (authErr) {
+        console.error("Supabase Auth bridge error:", authErr);
+        // Auth 세션 생성 실패 시에도 서비스 이용은 가능하도록 에러만 로그 처리할 수 있지만, 
+        // RLS를 위해 필수라면 여기서 차단하는 것이 맞습니다.
+        // setError("보안 세션을 생성하지 못했습니다. 다시 시도해주세요.");
+        // return;
       }
 
       const userStorageKey = `user_${normalizedEmployeeId}`;
