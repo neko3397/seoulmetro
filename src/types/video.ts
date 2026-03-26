@@ -5,9 +5,12 @@ export interface Video {
   youtubeId?: string; // Optional for local videos
   videoUrl?: string; // For local uploaded videos
   videoType: 'youtube' | 'local'; // Type of video
-  duration: number; // in seconds
+  duration: number | string; // in seconds or MM:SS
   thumbnail: string;
-  category: string;
+  category?: string;
+  categoryId?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Topic {

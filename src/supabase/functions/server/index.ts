@@ -406,6 +406,25 @@ async function listVideos(categoryId: string) {
   return (data || []).map(mapVideo);
 }
 
+async function listAllVideos() {
+  const { data, error } = await supabase
+    .from("videos")
+    .select("id, category_id, title, description, youtube_id, video_url, video_type, duration, thumbnail, created_at, updated_at")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data || []).map(mapVideo);
+}
+
+async function getVideoById(videoId: string) {
+  const { data, error } = await supabase
+    .from("videos")
+    .select("id, category_id, title, description, youtube_id, video_url, video_type, duration, thumbnail, created_at, updated_at")
+    .eq("id", videoId)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? mapVideo(data) : null;
+}
+
 async function listAdmins() {
   const { data, error } = await supabase
     .from("admins")
@@ -885,6 +904,100 @@ async function fetchGuides(includeDrafts = true) {
   }));
 }
 
+async function fetchPersonalizedRecommendationRules() {
+  const { data, error } = await supabase
+    .from("personalized_recommendation_rules")
+    .select("id, role, career_stage, video_ids, created_at, updated_at")
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+
+  return (data || []).map((row) => ({
+    id: row.id,
+    role: row.role,
+    careerStage: row.career_stage,
+    videoIds: Array.isArray(row.video_ids) ? row.video_ids.map((id: any) => String(id)) : [],
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
+}
+
+async function fetchResolvedPersonalizedRecommendations(role?: string | null, careerStage?: string | null) {
+  const [rules, videos] = await Promise.all([
+    fetchPersonalizedRecommendationRules(),
+    listAllVideos(),
+  ]);
+  const videoMap = new Map(videos.map((video) => [video.id, video]));
+
+  const resolvedRules = rules.map((rule) => ({
+    ...rule,
+    videos: rule.videoIds.map((videoId) => videoMap.get(videoId)).filter(Boolean),
+  }));
+
+  if (role && careerStage) {
+    return resolvedRules.find((rule) => rule.role === role && rule.careerStage === careerStage) || null;
+  }
+
+  return resolvedRules;
+}
+
+async function buildFeedItems() {
+  const [videos, posts] = await Promise.all([
+    listAllVideos(),
+    fetchCommunityPosts(false),
+  ]);
+
+  const videoItems = videos.map((video) => ({
+    id: `video_${video.id}`,
+    itemType: "video",
+    title: video.title,
+    summary: video.description || "교육 영상",
+    thumbnailUrl: video.thumbnail || "https://via.placeholder.com/480x270/1f2937/ffffff?text=Video",
+    publishedAt: video.updatedAt || video.createdAt || NOW(),
+    target: {
+      type: "video",
+      id: video.id,
+    },
+    categoryId: video.categoryId,
+    video,
+    metadata: {
+      videoType: video.videoType,
+    },
+  }));
+
+  const postItems = posts
+    .filter((post) => post.assets.some((asset) => asset.assetType === "document" || asset.assetType === "image"))
+    .map((post) => {
+      const primaryAsset =
+        post.assets.find((asset) => asset.assetType === "image") ||
+        post.assets.find((asset) => asset.assetType === "document");
+
+      return {
+        id: `post_${post.id}`,
+        itemType: primaryAsset?.assetType === "image" ? "image" : "document",
+        title: post.title,
+        summary: post.summary || post.content || "문서 게시물",
+        thumbnailUrl:
+          primaryAsset?.thumbnailUrl ||
+          primaryAsset?.previewUrl ||
+          "https://via.placeholder.com/480x270/e5e7eb/111827?text=Document",
+        publishedAt: post.publishedAt || post.updatedAt || post.createdAt,
+        target: {
+          type: "post",
+          id: post.id,
+        },
+        postId: post.id,
+        metadata: {
+          postType: post.postType,
+          assetCount: post.assets.length,
+        },
+      };
+    });
+
+  return [...videoItems, ...postItems].sort(
+    (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime(),
+  );
+}
+
 app.get("/make-server-a8898ff1/health", (c) =>
   c.json({ status: "ok", message: "Server is running", timestamp: NOW() }),
 );
@@ -1317,6 +1430,17 @@ app.get("/make-server-a8898ff1/videos/:categoryId", async (c: any) => {
   }
 });
 
+app.get("/make-server-a8898ff1/videos/item/:videoId", async (c: any) => {
+  try {
+    const video = await getVideoById(c.req.param("videoId"));
+    if (!video) return c.json({ error: "영상을 찾을 수 없습니다." }, 404);
+    return c.json({ video });
+  } catch (error) {
+    console.error("Get video item error:", error);
+    return c.json({ error: "영상 상세 조회 중 오류가 발생했습니다." }, 500);
+  }
+});
+
 app.post("/make-server-a8898ff1/videos", async (c: any) => {
   try {
     const body = await c.req.json();
@@ -1392,6 +1516,106 @@ app.delete("/make-server-a8898ff1/videos/:categoryId/:videoId", async (c: any) =
   }
 });
 
+app.get("/make-server-a8898ff1/feed", async (c: any) => {
+  try {
+    return c.json({ items: await buildFeedItems() });
+  } catch (error) {
+    console.error("Feed query error:", error);
+    return c.json({ error: "메인 피드 조회 중 오류가 발생했습니다." }, 500);
+  }
+});
+
+app.get("/make-server-a8898ff1/personalized-recommendations", async (c: any) => {
+  try {
+    const role = c.req.query("role") || null;
+    const careerStage = c.req.query("careerStage") || null;
+
+    if (role && careerStage) {
+      const rule = await fetchResolvedPersonalizedRecommendations(role, careerStage);
+      return c.json({ rule });
+    }
+
+    return c.json({ rules: await fetchResolvedPersonalizedRecommendations() });
+  } catch (error) {
+    console.error("Personalized recommendations query error:", error);
+    return c.json({ error: "맞춤형 교육 추천 조회 중 오류가 발생했습니다." }, 500);
+  }
+});
+
+app.post("/make-server-a8898ff1/personalized-recommendations", async (c: any) => {
+  try {
+    const body = await c.req.json();
+    const row = {
+      id: body.id || makeId("recommendation"),
+      role: String(body.role || "").trim(),
+      career_stage: String(body.careerStage || "").trim(),
+      video_ids: Array.isArray(body.videoIds) ? body.videoIds.map((id: any) => String(id)) : [],
+      created_at: NOW(),
+      updated_at: NOW(),
+    };
+
+    const { data: existing, error: existingError } = await supabase
+      .from("personalized_recommendation_rules")
+      .select("id, created_at")
+      .eq("role", row.role)
+      .eq("career_stage", row.career_stage)
+      .maybeSingle();
+    if (existingError) throw existingError;
+
+    const upsertRow = existing
+      ? {
+          ...row,
+          id: existing.id,
+          created_at: existing.created_at,
+        }
+      : row;
+
+    const { error } = await supabase
+      .from("personalized_recommendation_rules")
+      .upsert(upsertRow, { onConflict: "id" });
+    if (error) throw error;
+
+    return c.json({ success: true });
+  } catch (error) {
+    console.error("Save personalized recommendations error:", error);
+    return c.json({ error: "맞춤형 교육 추천 저장 중 오류가 발생했습니다." }, 500);
+  }
+});
+
+app.put("/make-server-a8898ff1/personalized-recommendations/:ruleId", async (c: any) => {
+  try {
+    const body = await c.req.json();
+    const { error } = await supabase
+      .from("personalized_recommendation_rules")
+      .update({
+        role: String(body.role || "").trim(),
+        career_stage: String(body.careerStage || "").trim(),
+        video_ids: Array.isArray(body.videoIds) ? body.videoIds.map((id: any) => String(id)) : [],
+        updated_at: NOW(),
+      })
+      .eq("id", c.req.param("ruleId"));
+    if (error) throw error;
+    return c.json({ success: true });
+  } catch (error) {
+    console.error("Update personalized recommendations error:", error);
+    return c.json({ error: "맞춤형 교육 추천 수정 중 오류가 발생했습니다." }, 500);
+  }
+});
+
+app.delete("/make-server-a8898ff1/personalized-recommendations/:ruleId", async (c: any) => {
+  try {
+    const { error } = await supabase
+      .from("personalized_recommendation_rules")
+      .delete()
+      .eq("id", c.req.param("ruleId"));
+    if (error) throw error;
+    return c.json({ success: true });
+  } catch (error) {
+    console.error("Delete personalized recommendations error:", error);
+    return c.json({ error: "맞춤형 교육 추천 삭제 중 오류가 발생했습니다." }, 500);
+  }
+});
+
 app.post("/make-server-a8898ff1/progress", async (c: any) => {
   try {
     const { employeeId, videoId, categoryId, progress, watchTime } = await c.req.json();
@@ -1448,7 +1672,7 @@ app.get("/make-server-a8898ff1/admin/progress", async (c: any) => {
 
 app.get("/make-server-a8898ff1/community/posts", async (c: any) => {
   try {
-    const includeDrafts = c.req.query("includeDrafts") !== "false";
+    const includeDrafts = c.req.query("includeDrafts") === "true";
     const employeeId = canonicalizeEmployeeId(c.req.query("employeeId") || "");
     const posts = await fetchCommunityPosts(includeDrafts, employeeId || null);
     return c.json({ posts });
@@ -1508,7 +1732,7 @@ app.post("/make-server-a8898ff1/community/posts", async (c: any) => {
 app.get("/make-server-a8898ff1/community/posts/:postId", async (c: any) => {
   try {
     const employeeId = canonicalizeEmployeeId(c.req.query("employeeId") || "");
-    const posts = await fetchCommunityPosts(true, employeeId || null);
+    const posts = await fetchCommunityPosts(false, employeeId || null);
     const post = posts.find((item) => item.id === c.req.param("postId"));
     if (!post) return c.json({ error: "게시물을 찾을 수 없습니다." }, 404);
     return c.json({ post });

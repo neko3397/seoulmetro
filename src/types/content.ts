@@ -1,0 +1,97 @@
+import { Video } from "./video";
+
+export interface FeedItemDetailTarget {
+  type: "video" | "post";
+  id: string;
+}
+
+export interface FeedItem {
+  id: string;
+  itemType: "video" | "document" | "image";
+  title: string;
+  summary: string;
+  thumbnailUrl: string;
+  publishedAt: string;
+  target: FeedItemDetailTarget;
+  categoryId?: string;
+  video?: Video;
+  postId?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CommunityAsset {
+  id: string;
+  postId: string;
+  driveFileId?: string | null;
+  fileName: string;
+  mimeType?: string | null;
+  assetType: "document" | "image" | "video";
+  previewUrl?: string | null;
+  thumbnailUrl?: string | null;
+  fileSize?: number | null;
+  sortOrder: number;
+  syncStatus: string;
+  metadata?: Record<string, unknown>;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CommunityPost {
+  id: string;
+  title: string;
+  summary?: string | null;
+  content?: string | null;
+  postType: string;
+  isPublished: boolean;
+  authorEmployeeId?: string | null;
+  authorName?: string | null;
+  publishedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  assets: CommunityAsset[];
+  comments: Array<Record<string, unknown>>;
+  likeCount: number;
+  likedByMe: boolean;
+  commentCount: number;
+}
+
+export interface GuideSection {
+  id: string;
+  guideId: string;
+  parentId?: string | null;
+  title: string;
+  slug: string;
+  markdownContent: string;
+  sortOrder: number;
+  depth: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GuideDetail {
+  id: string;
+  title: string;
+  description?: string | null;
+  slug: string;
+  isPublished: boolean;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+  sectionCount: number;
+  sections: GuideSection[];
+}
+
+export interface PersonalizedProfileInput {
+  role: "기관사" | "차장";
+  careerStage: "신입" | "경력";
+}
+
+export interface PersonalizedRecommendationRule {
+  id: string;
+  role: PersonalizedProfileInput["role"];
+  careerStage: PersonalizedProfileInput["careerStage"];
+  videoIds: string[];
+  createdAt?: string;
+  updatedAt?: string;
+  videos?: Video[];
+}

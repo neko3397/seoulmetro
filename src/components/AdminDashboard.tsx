@@ -13,6 +13,7 @@ import { GuideManagement } from "./GuideManagement";
 import { AISettingsManagement } from "./AISettingsManagement";
 import { GoogleDriveSettings } from "./GoogleDriveSettings";
 import { OperationsOverview } from "./OperationsOverview";
+import { PersonalizedRecommendationManagement } from "./PersonalizedRecommendationManagement";
 import seoulMetroLogo from "../assets/logo.png";
 import { apiRequest } from "../lib/api";
 
@@ -154,6 +155,7 @@ export function AdminDashboard({ admin, onLogout }: AdminDashboardProps) {
           <TabsContent value="content" className="space-y-6">
             <CategoryManagement onStatsUpdate={handleUpdated} />
             <VideoManagement onStatsUpdate={handleUpdated} />
+            <PersonalizedRecommendationManagement onUpdated={handleUpdated} />
           </TabsContent>
 
           <TabsContent value="community">

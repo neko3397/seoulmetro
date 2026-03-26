@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { WatchProgress } from '../types/video';
-import { saveProgress, getLocalProgress } from '../utils/progressTracker';
+import { saveProgress } from '../utils/progressTracker';
+import { parseDurationToSeconds } from '../lib/video';
 
 export const useWatchProgress = () => {
   const [progressData, setProgressData] = useState<Record<string, WatchProgress>>({});
@@ -45,14 +46,16 @@ export const useWatchProgress = () => {
   }, []);
 
   // 특정 영상의 진행률 업데이트
-  const updateProgress = useCallback(async (videoId: string, watchedSeconds: number, totalDuration: number, categoryId?: string) => {
-    const completed = watchedSeconds >= totalDuration * 0.9; // 90% 이상 시청 시 완료로 간주
-    const progressPercentage = Math.min((watchedSeconds / totalDuration) * 100, 100);
+  const updateProgress = useCallback(async (videoId: string, watchedSeconds: number, totalDuration: number | string, categoryId?: string) => {
+    const durationInSeconds = parseDurationToSeconds(totalDuration);
+    if (durationInSeconds <= 0) return;
+    const completed = watchedSeconds >= durationInSeconds * 0.9; // 90% 이상 시청 시 완료로 간주
+    const progressPercentage = Math.min((watchedSeconds / durationInSeconds) * 100, 100);
 
     console.log('💾 Saving progress:', {
       videoId,
       watchedSeconds,
-      totalDuration,
+        totalDuration: durationInSeconds,
       progressPercentage: progressPercentage + '%',
       categoryId,
       completed
@@ -91,10 +94,12 @@ export const useWatchProgress = () => {
   }, [progressData]);
 
   // 진행률 퍼센티지 계산
-  const getProgressPercentage = useCallback((videoId: string, totalDuration: number): number => {
+  const getProgressPercentage = useCallback((videoId: string, totalDuration: number | string): number => {
+    const durationInSeconds = parseDurationToSeconds(totalDuration);
+    if (durationInSeconds <= 0) return 0;
     const progress = getProgress(videoId);
     if (!progress) return 0;
-    const raw = Math.min((progress.watchedSeconds / totalDuration) * 100, 100);
+    const raw = Math.min((progress.watchedSeconds / durationInSeconds) * 100, 100);
     // Round to one decimal place for UI consistency
     return Math.round(raw * 10) / 10;
   }, [getProgress]);

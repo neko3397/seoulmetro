@@ -4,6 +4,7 @@ import { Badge } from './ui/badge';
 import { Progress } from './ui/progress';
 import { useWatchProgress } from '../hooks/useWatchProgress';
 import { Clock, CheckCircle } from 'lucide-react';
+import { parseDurationToSeconds } from '../lib/video';
 
 interface VideoDescriptionProps {
   video: Video;
@@ -40,7 +41,7 @@ export const VideoDescription = ({ video }: VideoDescriptionProps) => {
           <div className="flex items-center gap-2 shrink-0">
             <Badge variant="outline" className="flex items-center gap-1 text-lg">
               <Clock className="w-3 h-3" />
-              {formatDuration(video.duration)}
+              {formatDuration(parseDurationToSeconds(video.duration))}
             </Badge>
             {isCompleted && (
               <Badge variant="default" className="bg-green-500 flex items-center gap-1">

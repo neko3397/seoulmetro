@@ -4,6 +4,7 @@ import { Badge } from './ui/badge';
 import { Progress } from './ui/progress';
 import { useWatchProgress } from '../hooks/useWatchProgress';
 import { PlayCircle, CheckCircle } from 'lucide-react';
+import { formatDurationLabel } from '../lib/video';
 
 interface VideoItemProps {
   video: Video;
@@ -16,12 +17,6 @@ export const VideoItem = ({ video, onSelect }: VideoItemProps) => {
   const progressPercentage = getProgressPercentage(video.id, video.duration);
   const progressInfo = getProgress(video.id);
   const isCompleted = progressInfo?.completed || false;
-
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
 
   return (
     <Card
@@ -49,7 +44,7 @@ export const VideoItem = ({ video, onSelect }: VideoItemProps) => {
             variant="secondary"
             className="absolute bottom-1 right-1 text-md"
           >
-            {formatDuration(video.duration)}
+            {formatDurationLabel(video.duration)}
           </Badge>
         </div>
 

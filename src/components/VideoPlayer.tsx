@@ -4,6 +4,7 @@ import { useWatchProgress } from '../hooks/useWatchProgress';
 import { Button } from './ui/button';
 import { Play, Pause, Volume2, VolumeX, Maximize, RotateCcw } from 'lucide-react';
 import { Slider } from './ui/slider';
+import { parseDurationToSeconds } from '../lib/video';
 
 interface VideoPlayerProps {
   video: Video;
@@ -30,6 +31,7 @@ export const VideoPlayer = ({ video, categoryId }: VideoPlayerProps) => {
   const [volume, setVolume] = useState(1);
   const { updateProgress } = useWatchProgress();
   const progressUpdateRef = useRef<NodeJS.Timeout>();
+  const videoDurationInSeconds = parseDurationToSeconds(video.duration);
 
   const getCurrentPlaybackSeconds = () => {
     if (video.videoType === 'youtube' && playerRef.current && playerRef.current.getCurrentTime) {
@@ -170,7 +172,7 @@ export const VideoPlayer = ({ video, categoryId }: VideoPlayerProps) => {
         categoryId
       });
 
-      updateProgress(video.id, Math.floor(currentSeconds), video.duration, categoryId);
+      updateProgress(video.id, Math.floor(currentSeconds), videoDurationInSeconds, categoryId);
     }, 5000); // 5초마다 업데이트
   };
 
@@ -261,7 +263,7 @@ export const VideoPlayer = ({ video, categoryId }: VideoPlayerProps) => {
         <div className="mb-3">
           <Slider
             value={[currentTime]}
-            max={duration}
+            max={duration || videoDurationInSeconds}
             step={1}
             onValueChange={handleSeek}
             className="w-full"
