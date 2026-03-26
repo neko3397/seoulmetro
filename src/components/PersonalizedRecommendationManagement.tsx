@@ -4,7 +4,7 @@ import { Button } from "./ui/button";
 import { Label } from "./ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Badge } from "./ui/badge";
-import { apiRequest } from "../lib/api";
+import { apiRequestJson } from "../lib/api";
 import { PersonalizedRecommendationRule } from "../types/content";
 
 interface VideoOption {
@@ -42,23 +42,19 @@ export function PersonalizedRecommendationManagement({ onUpdated }: Recommendati
   const load = async () => {
     try {
       setLoading(true);
-      const [rulesResponse, categoriesResponse] = await Promise.all([
-        apiRequest("/personalized-recommendations"),
-        apiRequest("/categories"),
+      const [rulesData, categoriesData] = await Promise.all([
+        apiRequestJson<{ rules?: PersonalizedRecommendationRule[] }>("/personalized-recommendations"),
+        apiRequestJson<{ categories?: Array<{ id: string }> }>("/categories"),
       ]);
-
-      const rulesData = await rulesResponse.json();
-      const categoriesData = await categoriesResponse.json();
       const categories = categoriesData.categories || [];
 
       const videoResponses = await Promise.all(
-        categories.map((category: any) => apiRequest(`/videos/${category.id}`)),
+        categories.map((category: any) => apiRequestJson<{ videos?: any[] }>(`/videos/${category.id}`)),
       );
-      const videoPayloads = await Promise.all(videoResponses.map((response) => response.json()));
 
       setRules(rulesData.rules || []);
       setVideos(
-        videoPayloads.flatMap((payload) =>
+        videoResponses.flatMap((payload) =>
           (payload.videos || []).map((video: any) => ({
             id: video.id,
             title: video.title,
@@ -91,7 +87,7 @@ export function PersonalizedRecommendationManagement({ onUpdated }: Recommendati
   const handleSave = async () => {
     try {
       setSaving(true);
-      const response = await apiRequest("/personalized-recommendations", {
+      const data = await apiRequestJson<{ success?: boolean; error?: string }>("/personalized-recommendations", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -102,8 +98,6 @@ export function PersonalizedRecommendationManagement({ onUpdated }: Recommendati
           videoIds: selectedVideoIds,
         }),
       });
-
-      const data = await response.json();
       if (!data.success) {
         alert(data.error || "추천 규칙 저장에 실패했습니다.");
         return;
@@ -124,10 +118,12 @@ export function PersonalizedRecommendationManagement({ onUpdated }: Recommendati
     if (!confirm("현재 조합의 추천 규칙을 삭제하시겠습니까?")) return;
 
     try {
-      const response = await apiRequest(`/personalized-recommendations/${currentRule.id}`, {
+      const data = await apiRequestJson<{ success?: boolean; error?: string }>(
+        `/personalized-recommendations/${currentRule.id}`,
+        {
         method: "DELETE",
-      });
-      const data = await response.json();
+        },
+      );
       if (!data.success) {
         alert(data.error || "추천 규칙 삭제에 실패했습니다.");
         return;

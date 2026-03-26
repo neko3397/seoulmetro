@@ -33,7 +33,7 @@ import {
   Video as VideoIcon,
 } from "lucide-react";
 import logo from "./assets/logo.png";
-import { apiRequest } from "./lib/api";
+import { apiRequest, apiRequestJson } from "./lib/api";
 import { formatDurationLabel } from "./lib/video";
 
 interface Category {
@@ -239,15 +239,11 @@ export default function App() {
   const loadInitialData = async () => {
     try {
       setLoading(true);
-      const [categoriesResponse, feedResponse, guidesResponse] = await Promise.all([
-        apiRequest("/categories"),
-        apiRequest("/feed"),
-        apiRequest("/guides?includeDrafts=false"),
+      const [categoriesData, feedData, guidesData] = await Promise.all([
+        apiRequestJson<{ categories?: Category[] }>("/categories"),
+        apiRequestJson<{ items?: FeedItem[] }>("/feed"),
+        apiRequestJson<{ guides?: GuideDetail[] }>("/guides?includeDrafts=false"),
       ]);
-
-      const categoriesData = await categoriesResponse.json();
-      const guidesData = await guidesResponse.json();
-      const feedData = await feedResponse.json();
       const loadedCategories = categoriesData.categories || [];
 
       setCategories(loadedCategories);
@@ -255,13 +251,12 @@ export default function App() {
       setFeedItems(feedData.items || []);
 
       const videoResponses = await Promise.all(
-        loadedCategories.map((category: Category) => apiRequest(`/videos/${category.id}`)),
+        loadedCategories.map((category: Category) => apiRequestJson<{ videos?: Video[] }>(`/videos/${category.id}`)),
       );
-      const videoPayloads = await Promise.all(videoResponses.map((response) => response.json()));
 
       const nextVideosByCategory: Record<string, Video[]> = {};
       loadedCategories.forEach((category: Category, index: number) => {
-        const serverVideos = Array.isArray(videoPayloads[index].videos) ? videoPayloads[index].videos : [];
+        const serverVideos = Array.isArray(videoResponses[index].videos) ? videoResponses[index].videos : [];
         nextVideosByCategory[category.id] = sortVideosByCreatedAt(serverVideos);
       });
 
@@ -278,12 +273,11 @@ export default function App() {
   const loadRecommendationRule = async (profile: PersonalizedProfileInput) => {
     try {
       setRecommendationLoading(true);
-      const response = await apiRequest(
+      const data = await apiRequestJson<{ rule?: PersonalizedRecommendationRule | null }>(
         `/personalized-recommendations?role=${encodeURIComponent(profile.role)}&careerStage=${encodeURIComponent(
           profile.careerStage,
         )}`,
       );
-      const data = await response.json();
       setRecommendationRule(data.rule || null);
     } catch (error) {
       console.error("Failed to load recommendation rule:", error);
@@ -296,8 +290,7 @@ export default function App() {
   const refreshFeed = async () => {
     try {
       setFeedLoading(true);
-      const response = await apiRequest("/feed");
-      const data = await response.json();
+      const data = await apiRequestJson<{ items?: FeedItem[] }>("/feed");
       setFeedItems(data.items || []);
     } catch (error) {
       console.error("Failed to refresh feed:", error);
@@ -309,8 +302,7 @@ export default function App() {
   const loadGuides = async () => {
     try {
       setWikiLoading(true);
-      const response = await apiRequest("/guides?includeDrafts=false");
-      const data = await response.json();
+      const data = await apiRequestJson<{ guides?: GuideDetail[] }>("/guides?includeDrafts=false");
       setGuides(data.guides || []);
     } catch (error) {
       console.error("Failed to refresh guides:", error);
@@ -322,8 +314,7 @@ export default function App() {
   const loadCommunityPostDetail = async (postId: string) => {
     try {
       setDetailLoading(true);
-      const response = await apiRequest(`/community/posts/${postId}`);
-      const data = await response.json();
+      const data = await apiRequestJson<{ post?: CommunityPost | null }>(`/community/posts/${postId}`);
       if (data.post) {
         navigateTo("communityPostDetail", { post: data.post });
       }
