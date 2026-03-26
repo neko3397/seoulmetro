@@ -840,21 +840,21 @@ export default function App() {
                     <div className="mt-8 grid gap-3 md:grid-cols-3">
                       <Button
                         onClick={() => navigateTo("educationVideos", { video: null, guide: null, post: null })}
-                        className="h-12 justify-start bg-white text-slate-900 hover:bg-blue-50"
+                        className="h-12 justify-start border border-white/80 bg-white text-slate-900 shadow-lg shadow-slate-950/10 hover:bg-blue-50"
                       >
                         <Play className="mr-2 h-4 w-4" />
                         교육영상
                       </Button>
                       <Button
                         onClick={() => navigateTo("wikiDocs", { video: null, guide: null, post: null })}
-                        className="h-12 justify-start bg-white/15 text-white hover:bg-white/25"
+                        className="h-12 justify-start border border-white/35 bg-white/20 text-white shadow-lg shadow-slate-950/10 backdrop-blur-sm hover:bg-white/30"
                       >
                         <BookOpen className="mr-2 h-4 w-4" />
                         위키문서
                       </Button>
                       <Button
                         onClick={() => navigateTo("personalizedEducation", { video: null, guide: null, post: null })}
-                        className="h-12 justify-start bg-slate-950/30 text-white hover:bg-slate-950/45"
+                        className="h-12 justify-start border border-slate-100/20 bg-slate-950/40 text-white shadow-lg shadow-slate-950/20 backdrop-blur-sm hover:bg-slate-950/55"
                       >
                         <Sparkles className="mr-2 h-4 w-4" />
                         나를 위한 맞춤형 교육

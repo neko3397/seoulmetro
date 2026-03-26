@@ -8,12 +8,6 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Plus, Edit, Trash2, FolderOpen, ExternalLink, Upload, X } from 'lucide-react';
 import { projectId, publicAnonKey } from '../utils/supabase/info';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  `https://${projectId}.supabase.co`,
-  publicAnonKey
-);
 
 // NOTE: 서버 초기화 코드에서 사용하는 버킷 네이밍과 일치시키기
 // src/supabase/functions/server/index.tsx 에서 'make-a8898ff1-images' 버킷을 사용
