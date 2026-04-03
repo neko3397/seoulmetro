@@ -181,9 +181,9 @@ const MyPage: React.FC<MyPageProps> = ({ videosByCategory, onBack }) => {
     const attendanceRate = daysInSelectedMonth > 0 ? Math.round((attendanceCount / daysInSelectedMonth) * 1000) / 10 : 0;
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+        <div className="min-h-full bg-gradient-to-br from-slate-50 to-slate-100 pb-6">
             {/* 메인 컨텐츠 */}
-            <main className="container mx-auto px-4 pt-24">
+            <main className="container mx-auto px-4 pb-6 pt-24">
                 {/* 환영 섹션 */}
                 <div className="mb-8 text-center">
                     <div className="mb-6">

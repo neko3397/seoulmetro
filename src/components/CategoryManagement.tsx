@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Plus, Edit, Trash2, FolderOpen, ExternalLink, Upload, X } from 'lucide-react';
 import { projectId, publicAnonKey } from '../utils/supabase/info';
+import { notifyContentChanged } from '../lib/contentSync';
 
 // NOTE: 서버 초기화 코드에서 사용하는 버킷 네이밍과 일치시키기
 // src/supabase/functions/server/index.tsx 에서 'make-a8898ff1-images' 버킷을 사용
@@ -205,6 +206,7 @@ export function CategoryManagement({ onStatsUpdate }: CategoryManagementProps) {
 
       if (data.success) {
         await loadCategories();
+        notifyContentChanged(['categories', 'videos', 'feed', 'recommendations']);
         onStatsUpdate();
         setIsDialogOpen(false);
         resetForm();
@@ -250,6 +252,7 @@ export function CategoryManagement({ onStatsUpdate }: CategoryManagementProps) {
 
       if (data.success) {
         await loadCategories();
+        notifyContentChanged(['categories', 'videos', 'feed', 'recommendations']);
         onStatsUpdate();
       } else {
         alert(data.error || '카테고리 삭제에 실패했습니다.');
@@ -315,17 +318,13 @@ export function CategoryManagement({ onStatsUpdate }: CategoryManagementProps) {
       <Card>
         <CardHeader>
           <CardTitle>카테고리 관리</CardTitle>
-          <CardDescription>
-            교육 카테고리를 추가, 수정, 삭제할 수 있습니다.
-          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex justify-end mb-6">
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild>
                 <Button onClick={resetForm}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  새 카테고리 추가
+                  <Plus className="h-4 w-4" />
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-w-lg">

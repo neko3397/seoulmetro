@@ -202,7 +202,6 @@
   h4,
   h5,
   h6 {
-    font-size: inherit;
     font-weight: inherit;
   }
 
@@ -2771,6 +2770,16 @@
 
 html {
   font-size: var(--font-size);
+}
+
+.app-shell-container {
+  width: 100%;
+}
+
+@media (min-width: 1024px) {
+  .app-shell-container {
+    max-width: 50vw;
+  }
 }
 
 @property --tw-translate-x {

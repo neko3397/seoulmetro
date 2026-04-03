@@ -6,6 +6,7 @@ import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { apiRequest } from "../lib/api";
+import { notifyContentChanged } from "../lib/contentSync";
 
 interface GuideManagementProps {
   onUpdated: () => void;
@@ -114,6 +115,7 @@ export function GuideManagement({ onUpdated }: GuideManagementProps) {
         return;
       }
       await load();
+      notifyContentChanged(["guides"]);
       onUpdated();
     } catch (error) {
       console.error("Failed to save guide:", error);
@@ -133,6 +135,7 @@ export function GuideManagement({ onUpdated }: GuideManagementProps) {
         return;
       }
       await load();
+      notifyContentChanged(["guides"]);
       onUpdated();
     } catch (error) {
       console.error("Failed to delete guide:", error);
@@ -166,6 +169,7 @@ export function GuideManagement({ onUpdated }: GuideManagementProps) {
       }
       setSectionForm(emptySection);
       await load();
+      notifyContentChanged(["guides"]);
       onUpdated();
     } catch (error) {
       console.error("Failed to save section:", error);
@@ -186,6 +190,7 @@ export function GuideManagement({ onUpdated }: GuideManagementProps) {
       }
       if (sectionForm.id === sectionId) setSectionForm(emptySection);
       await load();
+      notifyContentChanged(["guides"]);
       onUpdated();
     } catch (error) {
       console.error("Failed to delete section:", error);

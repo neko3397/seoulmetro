@@ -190,9 +190,7 @@ export function AdminManagement({ currentAdmin }: AdminManagementProps) {
       <Card>
         <CardHeader>
           <CardTitle>관리자 계정 관리</CardTitle>
-          <CardDescription>
-            관리자 계정을 추가, 수정, 삭제할 수 있습니다. 메인 관리자는 삭제할 수 없습니다.
-          </CardDescription>
+
         </CardHeader>
         <CardContent>
           <div className="flex justify-end mb-6">

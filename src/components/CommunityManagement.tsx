@@ -6,7 +6,20 @@ import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { Badge } from "./ui/badge";
+import { Alert, AlertDescription } from "./ui/alert";
 import { apiRequest } from "../lib/api";
+import { notifyContentChanged } from "../lib/contentSync";
+
+const COMMUNITY_UPLOAD_ACCEPT =
+  ".pdf,.ppt,.pptx,.jpg,.jpeg,.png,.webp,.gif,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,image/jpeg,image/png,image/webp,image/gif";
+
+const getAssetPreviewLabel = (asset: any) => {
+  if (asset.previewKind === "image-inline") return "이미지 미리보기";
+  if (asset.previewKind === "pdf-inline") return "PDF 첫 페이지 미리보기";
+  return "다운로드 전용";
+};
+
+const getPdfPreviewUrl = (url?: string | null) => (url ? `${url}#page=1&view=FitH` : null);
 
 interface CommunityManagementProps {
   admin: any;
@@ -18,39 +31,41 @@ const emptyPost = {
   title: "",
   summary: "",
   content: "",
-  postType: "notice",
+  postType: "document",
   isPublished: false,
+  approvalStatus: "draft",
   assets: [] as any[],
 };
 
-const emptyAsset = {
-  driveFileId: "",
-  fileName: "",
-  mimeType: "",
-  assetType: "document",
-  previewUrl: "",
-  thumbnailUrl: "",
-  fileSize: "",
-  sortOrder: 0,
+const approvalStatusLabel: Record<string, string> = {
+  draft: "초안",
+  pending_review: "승인 대기",
+  published: "공개",
+  rejected: "반려",
 };
 
 export function CommunityManagement({ admin, onUpdated }: CommunityManagementProps) {
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [postForm, setPostForm] = useState(emptyPost);
-  const [assetForm, setAssetForm] = useState(emptyAsset);
   const [selectedPostId, setSelectedPostId] = useState("");
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [message, setMessage] = useState("");
 
   const filteredPosts = useMemo(() => {
     const keyword = search.trim().toLowerCase();
-    if (!keyword) return posts;
-    return posts.filter(
-      (post) =>
+    return posts.filter((post) => {
+      const keywordMatched =
+        !keyword ||
         post.title.toLowerCase().includes(keyword) ||
-        String(post.summary || "").toLowerCase().includes(keyword),
-    );
-  }, [posts, search]);
+        String(post.summary || "").toLowerCase().includes(keyword);
+      const statusMatched = statusFilter === "all" || post.approvalStatus === statusFilter;
+      return keywordMatched && statusMatched;
+    });
+  }, [posts, search, statusFilter]);
 
   const selectedPost = useMemo(
     () => posts.find((post) => post.id === selectedPostId) || null,
@@ -60,7 +75,7 @@ export function CommunityManagement({ admin, onUpdated }: CommunityManagementPro
   const load = async () => {
     try {
       setLoading(true);
-      const response = await apiRequest("/community/posts?includeDrafts=true");
+      const response = await apiRequest(`/community/posts?includeDrafts=true&employeeId=${encodeURIComponent(admin.employeeId || "")}`);
       const data = await response.json();
       const nextPosts = data.posts || [];
       setPosts(nextPosts);
@@ -74,6 +89,7 @@ export function CommunityManagement({ admin, onUpdated }: CommunityManagementPro
           content: activePost.content || "",
           postType: activePost.postType,
           isPublished: activePost.isPublished,
+          approvalStatus: activePost.approvalStatus || "draft",
           assets: activePost.assets || [],
         });
       } else {
@@ -82,13 +98,14 @@ export function CommunityManagement({ admin, onUpdated }: CommunityManagementPro
       }
     } catch (error) {
       console.error("Failed to load community posts:", error);
+      setMessage("커뮤니티 게시물을 불러오지 못했습니다.");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    load();
+    void load();
   }, []);
 
   useEffect(() => {
@@ -100,13 +117,62 @@ export function CommunityManagement({ admin, onUpdated }: CommunityManagementPro
         content: selectedPost.content || "",
         postType: selectedPost.postType,
         isPublished: selectedPost.isPublished,
+        approvalStatus: selectedPost.approvalStatus || "draft",
         assets: selectedPost.assets || [],
       });
     }
   }, [selectedPost]);
 
+  const resetForm = () => {
+    setSelectedPostId("");
+    setPostForm(emptyPost);
+    setMessage("");
+  };
+
+  const handleUploadDocument = async (file: File) => {
+    setMessage("");
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("employeeId", String(admin.employeeId || ""));
+      formData.append("name", String(admin.name || ""));
+      const response = await apiRequest("/community/assets/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "파일 업로드에 실패했습니다.");
+      }
+      setPostForm((prev) => ({
+        ...prev,
+        assets: [
+          ...prev.assets,
+          {
+            ...data.asset,
+            sortOrder: prev.assets.length,
+          },
+        ],
+      }));
+    } catch (error) {
+      console.error("Failed to upload asset:", error);
+      setMessage(error instanceof Error ? error.message : "파일 업로드에 실패했습니다.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleUploadDocuments = async (files: FileList | File[]) => {
+    for (const file of Array.from(files)) {
+      await handleUploadDocument(file);
+    }
+  };
+
   const handleSavePost = async () => {
     try {
+      setSaving(true);
+      setMessage("");
       const method = postForm.id ? "PUT" : "POST";
       const path = postForm.id ? `/community/posts/${postForm.id}` : "/community/posts";
       const response = await apiRequest(path, {
@@ -120,6 +186,7 @@ export function CommunityManagement({ admin, onUpdated }: CommunityManagementPro
           content: postForm.content,
           postType: postForm.postType,
           isPublished: postForm.isPublished,
+          approvalStatus: postForm.isPublished ? "published" : postForm.approvalStatus,
           authorEmployeeId: admin.employeeId,
           authorName: admin.name,
           assets: postForm.assets,
@@ -127,14 +194,40 @@ export function CommunityManagement({ admin, onUpdated }: CommunityManagementPro
       });
       const data = await response.json();
       if (!data.success) {
-        alert(data.error || "게시물 저장에 실패했습니다.");
-        return;
+        throw new Error(data.error || "게시물 저장에 실패했습니다.");
       }
       await load();
+      notifyContentChanged(["community", "feed"]);
       onUpdated();
+      setMessage("게시물이 저장되었습니다.");
     } catch (error) {
       console.error("Failed to save community post:", error);
-      alert("게시물 저장 중 오류가 발생했습니다.");
+      setMessage(error instanceof Error ? error.message : "게시물 저장 중 오류가 발생했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleReviewPost = async (postId: string, action: "approve" | "reject") => {
+    try {
+      const response = await apiRequest(`/community/posts/${postId}/review`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action }),
+      });
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.error || "승인 상태 변경에 실패했습니다.");
+      }
+      await load();
+      notifyContentChanged(["community", "feed"]);
+      onUpdated();
+      setMessage(action === "approve" ? "게시물을 공개했습니다." : "게시물을 반려했습니다.");
+    } catch (error) {
+      console.error("Failed to review community post:", error);
+      setMessage(error instanceof Error ? error.message : "승인 처리 중 오류가 발생했습니다.");
     }
   };
 
@@ -146,14 +239,18 @@ export function CommunityManagement({ admin, onUpdated }: CommunityManagementPro
       });
       const data = await response.json();
       if (!data.success) {
-        alert(data.error || "게시물 삭제에 실패했습니다.");
-        return;
+        throw new Error(data.error || "게시물 삭제에 실패했습니다.");
       }
       await load();
+      notifyContentChanged(["community", "feed"]);
       onUpdated();
+      if (selectedPostId === postId) {
+        resetForm();
+      }
+      setMessage("게시물을 삭제했습니다.");
     } catch (error) {
       console.error("Failed to delete community post:", error);
-      alert("게시물 삭제 중 오류가 발생했습니다.");
+      setMessage(error instanceof Error ? error.message : "게시물 삭제 중 오류가 발생했습니다.");
     }
   };
 
@@ -165,37 +262,24 @@ export function CommunityManagement({ admin, onUpdated }: CommunityManagementPro
       });
       const data = await response.json();
       if (!data.success) {
-        alert(data.error || "댓글 삭제에 실패했습니다.");
-        return;
+        throw new Error(data.error || "댓글 삭제에 실패했습니다.");
       }
       await load();
+      notifyContentChanged(["community", "feed"]);
       onUpdated();
     } catch (error) {
       console.error("Failed to delete comment:", error);
-      alert("댓글 삭제 중 오류가 발생했습니다.");
+      setMessage(error instanceof Error ? error.message : "댓글 삭제 중 오류가 발생했습니다.");
     }
-  };
-
-  const addAsset = () => {
-    if (!assetForm.fileName.trim()) return;
-    setPostForm((prev) => ({
-      ...prev,
-      assets: [
-        ...prev.assets,
-        {
-          ...assetForm,
-          fileSize: assetForm.fileSize ? Number(assetForm.fileSize) : null,
-          sortOrder: Number(assetForm.sortOrder || 0),
-        },
-      ],
-    }));
-    setAssetForm(emptyAsset);
   };
 
   const removeAsset = (index: number) => {
     setPostForm((prev) => ({
       ...prev,
-      assets: prev.assets.filter((_: any, assetIndex: number) => assetIndex !== index),
+      assets: prev.assets.filter((_: any, assetIndex: number) => assetIndex !== index).map((asset: any, nextIndex: number) => ({
+        ...asset,
+        sortOrder: nextIndex,
+      })),
     }));
   };
 
@@ -213,22 +297,27 @@ export function CommunityManagement({ admin, onUpdated }: CommunityManagementPro
         <Card>
           <CardHeader>
             <CardTitle>게시물 목록</CardTitle>
-            <CardDescription>게시물, 댓글, 좋아요 통계를 함께 확인합니다.</CardDescription>
+            <CardDescription>문서 업로드 게시물과 승인 상태를 함께 관리합니다.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex gap-2">
+            <div className="grid gap-2 md:grid-cols-[1fr_180px_auto]">
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="제목 또는 요약 검색"
               />
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setSelectedPostId("");
-                  setPostForm(emptyPost);
-                }}
+              <select
+                className="h-9 rounded-md border bg-white px-3 text-sm"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
               >
+                <option value="all">전체 상태</option>
+                <option value="draft">초안</option>
+                <option value="pending_review">승인 대기</option>
+                <option value="published">공개</option>
+                <option value="rejected">반려</option>
+              </select>
+              <Button variant="outline" onClick={resetForm}>
                 새 게시물
               </Button>
             </div>
@@ -237,7 +326,7 @@ export function CommunityManagement({ admin, onUpdated }: CommunityManagementPro
                 <TableRow>
                   <TableHead>제목</TableHead>
                   <TableHead>유형</TableHead>
-                  <TableHead>공개</TableHead>
+                  <TableHead>상태</TableHead>
                   <TableHead>댓글</TableHead>
                   <TableHead>좋아요</TableHead>
                   <TableHead></TableHead>
@@ -250,7 +339,11 @@ export function CommunityManagement({ admin, onUpdated }: CommunityManagementPro
                     <TableCell>
                       <Badge variant="secondary">{post.postType}</Badge>
                     </TableCell>
-                    <TableCell>{post.isPublished ? "공개" : "비공개"}</TableCell>
+                    <TableCell>
+                      <Badge variant={post.approvalStatus === "published" ? "default" : "outline"}>
+                        {approvalStatusLabel[post.approvalStatus] || post.approvalStatus}
+                      </Badge>
+                    </TableCell>
                     <TableCell>{post.commentCount}</TableCell>
                     <TableCell>{post.likeCount}</TableCell>
                     <TableCell className="text-right">
@@ -258,7 +351,17 @@ export function CommunityManagement({ admin, onUpdated }: CommunityManagementPro
                         <Button variant="outline" size="sm" onClick={() => setSelectedPostId(post.id)}>
                           선택
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => handleDeletePost(post.id)}>
+                        {post.approvalStatus === "pending_review" ? (
+                          <>
+                            <Button size="sm" onClick={() => void handleReviewPost(post.id, "approve")}>
+                              승인
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => void handleReviewPost(post.id, "reject")}>
+                              반려
+                            </Button>
+                          </>
+                        ) : null}
+                        <Button variant="outline" size="sm" onClick={() => void handleDeletePost(post.id)}>
                           삭제
                         </Button>
                       </div>
@@ -293,7 +396,7 @@ export function CommunityManagement({ admin, onUpdated }: CommunityManagementPro
                       <TableCell>{comment.isDeleted ? "삭제됨" : "노출 중"}</TableCell>
                       <TableCell className="text-right">
                         {!comment.isDeleted && (
-                          <Button variant="outline" size="sm" onClick={() => handleDeleteComment(comment.id)}>
+                          <Button variant="outline" size="sm" onClick={() => void handleDeleteComment(comment.id)}>
                             삭제
                           </Button>
                         )}
@@ -311,8 +414,15 @@ export function CommunityManagement({ admin, onUpdated }: CommunityManagementPro
         <Card>
           <CardHeader>
             <CardTitle>{postForm.id ? "게시물 수정" : "게시물 생성"}</CardTitle>
+            <CardDescription>이미지와 PDF는 첫 미리보기를 제공하고, PPT/PPTX는 다운로드 전용으로 제공됩니다.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {message ? (
+              <Alert>
+                <AlertDescription>{message}</AlertDescription>
+              </Alert>
+            ) : null}
+
             <div>
               <Label htmlFor="post-title">제목</Label>
               <Input
@@ -342,91 +452,101 @@ export function CommunityManagement({ admin, onUpdated }: CommunityManagementPro
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <Label htmlFor="post-type">게시물 유형</Label>
-                <Input
+                <select
                   id="post-type"
+                  className="mt-2 h-9 w-full rounded-md border bg-white px-3 text-sm"
                   value={postForm.postType}
                   onChange={(e) => setPostForm((prev) => ({ ...prev, postType: e.target.value }))}
-                />
+                >
+                  <option value="notice">공지</option>
+                  <option value="document">문서</option>
+                  <option value="gallery">갤러리</option>
+                  <option value="video">영상</option>
+                </select>
               </div>
               <div className="flex items-center gap-3 pt-6">
                 <input
                   id="post-published"
                   type="checkbox"
                   checked={postForm.isPublished}
-                  onChange={(e) => setPostForm((prev) => ({ ...prev, isPublished: e.target.checked }))}
+                  onChange={(e) =>
+                    setPostForm((prev) => ({
+                      ...prev,
+                      isPublished: e.target.checked,
+                      approvalStatus: e.target.checked ? "published" : prev.approvalStatus === "published" ? "draft" : prev.approvalStatus,
+                    }))
+                  }
                 />
-                <Label htmlFor="post-published">공개 상태</Label>
+                <Label htmlFor="post-published">즉시 공개</Label>
               </div>
             </div>
 
-            <div className="rounded-md border p-4 space-y-4">
-              <div className="font-medium">첨부 자산</div>
-              <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-3 rounded-md border p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <div className="font-medium">파일 첨부</div>
+                  <div className="text-sm text-muted-foreground">PDF, PPT, PPTX, 이미지 파일을 업로드할 수 있습니다.</div>
+                </div>
                 <Input
-                  placeholder="파일명"
-                  value={assetForm.fileName}
-                  onChange={(e) => setAssetForm((prev) => ({ ...prev, fileName: e.target.value }))}
-                />
-                <Input
-                  placeholder="Drive 파일 ID"
-                  value={assetForm.driveFileId}
-                  onChange={(e) => setAssetForm((prev) => ({ ...prev, driveFileId: e.target.value }))}
-                />
-                <Input
-                  placeholder="MIME 타입"
-                  value={assetForm.mimeType}
-                  onChange={(e) => setAssetForm((prev) => ({ ...prev, mimeType: e.target.value }))}
-                />
-                <Input
-                  placeholder="자산 유형(document/image/video)"
-                  value={assetForm.assetType}
-                  onChange={(e) => setAssetForm((prev) => ({ ...prev, assetType: e.target.value }))}
-                />
-                <Input
-                  placeholder="미리보기 URL"
-                  value={assetForm.previewUrl}
-                  onChange={(e) => setAssetForm((prev) => ({ ...prev, previewUrl: e.target.value }))}
-                />
-                <Input
-                  placeholder="썸네일 URL"
-                  value={assetForm.thumbnailUrl}
-                  onChange={(e) => setAssetForm((prev) => ({ ...prev, thumbnailUrl: e.target.value }))}
-                />
-                <Input
-                  placeholder="파일 크기(byte)"
-                  value={assetForm.fileSize}
-                  onChange={(e) => setAssetForm((prev) => ({ ...prev, fileSize: e.target.value }))}
-                />
-                <Input
-                  placeholder="정렬 순서"
-                  type="number"
-                  value={assetForm.sortOrder}
-                  onChange={(e) => setAssetForm((prev) => ({ ...prev, sortOrder: Number(e.target.value || 0) }))}
+                  type="file"
+                  accept={COMMUNITY_UPLOAD_ACCEPT}
+                  multiple
+                  className="max-w-xs cursor-pointer"
+                  disabled={uploading}
+                  onChange={(e) => {
+                    const files = e.target.files;
+                    if (files?.length) {
+                      void handleUploadDocuments(files);
+                    }
+                    e.currentTarget.value = "";
+                  }}
                 />
               </div>
-              <Button variant="outline" onClick={addAsset}>
-                자산 추가
-              </Button>
+              {uploading ? <div className="text-sm text-muted-foreground">파일을 업로드하는 중...</div> : null}
               <div className="space-y-2">
-                {postForm.assets.map((asset: any, index: number) => (
-                  <div key={`${asset.fileName}-${index}`} className="flex items-center justify-between rounded-md border p-3">
-                    <div className="min-w-0">
-                      <div className="font-medium truncate">{asset.fileName}</div>
-                      <div className="text-xs text-muted-foreground truncate">
-                        {asset.assetType} / {asset.mimeType || "-"}
-                      </div>
-                    </div>
-                    <Button variant="outline" size="sm" onClick={() => removeAsset(index)}>
-                      제거
-                    </Button>
+                {postForm.assets.length === 0 ? (
+                  <div className="rounded-md border border-dashed px-4 py-6 text-sm text-muted-foreground">
+                    첨부된 파일이 없습니다.
                   </div>
-                ))}
+                ) : (
+                  postForm.assets.map((asset: any, index: number) => (
+                    <div key={`${asset.storagePath || asset.fileName}-${index}`} className="flex items-start justify-between gap-3 rounded-md border p-3">
+                      <div className="flex min-w-0 items-start gap-3">
+                        {asset.previewKind === "image-inline" && (asset.previewUrl || asset.thumbnailUrl) ? (
+                          <img
+                            src={asset.previewUrl || asset.thumbnailUrl || ""}
+                            alt={asset.fileName}
+                            className="h-16 w-16 rounded-md border object-cover"
+                          />
+                        ) : null}
+                        {asset.previewKind === "pdf-inline" && asset.previewUrl ? (
+                          <iframe
+                            src={getPdfPreviewUrl(asset.previewUrl) || ""}
+                            title={asset.fileName}
+                            className="h-16 w-16 rounded-md border bg-white"
+                          />
+                        ) : null}
+                        <div className="min-w-0">
+                          <div className="font-medium truncate">{asset.fileName}</div>
+                          <div className="text-xs text-muted-foreground truncate">
+                            {asset.mimeType || "-"} / {getAssetPreviewLabel(asset)}
+                          </div>
+                        </div>
+                      </div>
+                      <Button variant="outline" size="sm" onClick={() => removeAsset(index)}>
+                        제거
+                      </Button>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 
             <div className="flex gap-2">
-              <Button onClick={handleSavePost}>게시물 저장</Button>
-              <Button variant="outline" onClick={() => setPostForm(emptyPost)}>
+              <Button onClick={() => void handleSavePost()} disabled={saving || uploading}>
+                {saving ? "저장 중..." : "게시물 저장"}
+              </Button>
+              <Button variant="outline" onClick={resetForm}>
                 초기화
               </Button>
             </div>

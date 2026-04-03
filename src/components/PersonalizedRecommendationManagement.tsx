@@ -5,6 +5,7 @@ import { Label } from "./ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Badge } from "./ui/badge";
 import { apiRequestJson } from "../lib/api";
+import { notifyContentChanged } from "../lib/contentSync";
 import { PersonalizedRecommendationRule } from "../types/content";
 
 interface VideoOption {
@@ -104,6 +105,7 @@ export function PersonalizedRecommendationManagement({ onUpdated }: Recommendati
       }
 
       await load();
+      notifyContentChanged(["recommendations"]);
       onUpdated();
     } catch (error) {
       console.error("Failed to save personalized recommendation rule:", error);
@@ -130,6 +132,7 @@ export function PersonalizedRecommendationManagement({ onUpdated }: Recommendati
       }
 
       await load();
+      notifyContentChanged(["recommendations"]);
       onUpdated();
     } catch (error) {
       console.error("Failed to delete personalized recommendation rule:", error);

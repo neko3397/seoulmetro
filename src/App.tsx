@@ -8,125 +8,53 @@ import {
   PersonalizedProfileInput,
   PersonalizedRecommendationRule,
 } from "./types/content";
-import { VideoItem } from "./components/VideoItem";
-import { VideoPlayer } from "./components/VideoPlayer";
-import { VideoDescription } from "./components/VideoDescription";
 import { AdminLogin } from "./components/AdminLogin";
 import { AdminDashboard } from "./components/AdminDashboard";
 import { UserLogin } from "./components/UserLogin";
 import MyPage from "./components/MyPage";
-import { Button } from "./components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./components/ui/card";
-import { Badge } from "./components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select";
+import { Card, CardContent } from "./components/ui/card";
+import { apiRequestJson } from "./lib/api";
 import {
-  ArrowLeft,
-  BookOpen,
-  FileImage,
-  FileText,
-  Home,
-  LogOut,
-  Play,
-  Settings,
-  Sparkles,
-  User,
-  Video as VideoIcon,
-} from "lucide-react";
-import logo from "./assets/logo.png";
-import { apiRequest, apiRequestJson } from "./lib/api";
-import { formatDurationLabel } from "./lib/video";
-
-interface Category {
-  id: string;
-  title: string;
-  subtitle: string;
-  image: string;
-  description: string;
-}
-
-type ViewState =
-  | "homeFeed"
-  | "educationVideos"
-  | "videoList"
-  | "videoDetail"
-  | "wikiDocs"
-  | "wikiDetail"
-  | "communityPostDetail"
-  | "personalizedEducation"
-  | "adminLogin"
-  | "adminDashboard"
-  | "userLogin"
-  | "myPage";
-
-interface NavigationState {
-  view: ViewState;
-  topicId?: string;
-  video?: Video | null;
-  guide?: GuideDetail | null;
-  post?: CommunityPost | null;
-}
-
-const NAV_STATE_STORAGE_KEY = "app-navigation-state-v2";
-const PERSONALIZED_PROFILE_STORAGE_KEY = "personalized-profile-input";
-
-const readPersistedNavigationState = (): Partial<NavigationState> => {
-  try {
-    const raw = sessionStorage.getItem(NAV_STATE_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch (error) {
-    console.warn("Failed to parse persisted navigation state:", error);
-    return {};
-  }
-};
-
-const persistNavigationState = (state: NavigationState) => {
-  try {
-    sessionStorage.setItem(NAV_STATE_STORAGE_KEY, JSON.stringify(state));
-  } catch (error) {
-    console.warn("Failed to persist navigation state:", error);
-  }
-};
-
-const readPersistedProfile = (): PersonalizedProfileInput => {
-  try {
-    const raw = localStorage.getItem(PERSONALIZED_PROFILE_STORAGE_KEY);
-    if (!raw) return { role: "기관사", careerStage: "신입" };
-    const parsed = JSON.parse(raw);
-    return {
-      role: parsed.role === "차장" ? "차장" : "기관사",
-      careerStage: parsed.careerStage === "경력" ? "경력" : "신입",
-    };
-  } catch {
-    return { role: "기관사", careerStage: "신입" };
-  }
-};
-
-const sortVideosByCreatedAt = (videos: Video[]) =>
-  [...videos].sort((a, b) => {
-    const aTime = new Date(a.createdAt || 0).getTime();
-    const bTime = new Date(b.createdAt || 0).getTime();
-    return bTime - aTime;
-  });
-
-const formatDateTime = (value?: string | null) => {
-  if (!value) return "등록 정보 없음";
-  return new Intl.DateTimeFormat("ko-KR", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value));
-};
-
-const markdownToPlainText = (value?: string | null) =>
-  String(value || "")
-    .replace(/^#+\s?/gm, "")
-    .replace(/\*\*/g, "")
-    .trim();
+  listenContentChanges,
+  readCachedValue,
+  subscribeToRealtimeContentChanges,
+  writeCachedValue,
+} from "./lib/contentSync";
+import { AppFooter } from "./app/components/AppFooter";
+import { AppHeader } from "./app/components/AppHeader";
+import { AppLoadingScreen } from "./app/components/AppLoadingScreen";
+import {
+  APP_SHELL_CACHE_KEY,
+  COMMUNITY_POST_CACHE_PREFIX,
+  PERSONALIZED_PROFILE_STORAGE_KEY,
+  RECOMMENDATION_CACHE_PREFIX,
+} from "./app/constants";
+import { CommunityPostDetailPage } from "./app/pages/CommunityPostDetailPage";
+import { EducationVideosPage } from "./app/pages/EducationVideosPage";
+import { HomeFeedPage } from "./app/pages/HomeFeedPage";
+import { PersonalizedEducationPage } from "./app/pages/PersonalizedEducationPage";
+import { VideoDetailPage } from "./app/pages/VideoDetailPage";
+import { VideoListPage } from "./app/pages/VideoListPage";
+import { WikiDetailPage } from "./app/pages/WikiDetailPage";
+import { WikiListPage } from "./app/pages/WikiListPage";
+import { AppShellCache, Category, NavigateOptions, NavigationState, ViewState } from "./app/types";
+import {
+  isSameNavigationState,
+  persistNavigationStack,
+  persistNavigationState,
+  readPersistedNavigationStack,
+  readPersistedNavigationState,
+  readPersistedProfile,
+  sortVideosByCreatedAt,
+} from "./app/utils";
 
 export default function App() {
   const restoredNavigationState = readPersistedNavigationState();
+  const DUPLICATE_NAVIGATION_WINDOW_MS = 500;
+  const currentYearMonth = useMemo(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  }, []);
 
   const [currentUser, setCurrentUser] = useState<any>(() => {
     try {
@@ -158,12 +86,76 @@ export default function App() {
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
   const [personalizedProfile, setPersonalizedProfile] = useState<PersonalizedProfileInput>(readPersistedProfile);
   const [recommendationRule, setRecommendationRule] = useState<PersonalizedRecommendationRule | null>(null);
+  const [attendanceRate, setAttendanceRate] = useState(0);
   const [loading, setLoading] = useState(true);
   const [feedLoading, setFeedLoading] = useState(false);
+  const [isComposerOpen, setIsComposerOpen] = useState(false);
   const [wikiLoading, setWikiLoading] = useState(false);
   const [recommendationLoading, setRecommendationLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const initializedHistoryRef = useRef(false);
+  const currentUserRef = useRef(currentUser);
+  const lastNavigationRequestRef = useRef<{ state: Partial<NavigationState>; timestamp: number } | null>(null);
+  const navigationStackRef = useRef<NavigationState[]>(readPersistedNavigationStack());
+
+  const getRecommendationCacheKey = (profile: PersonalizedProfileInput) =>
+    `${RECOMMENDATION_CACHE_PREFIX}${profile.role}:${profile.careerStage}`;
+
+  const getCommunityPostCacheKey = (postId: string) => `${COMMUNITY_POST_CACHE_PREFIX}${postId}`;
+
+  const syncSelectedEntities = (shell: AppShellCache) => {
+    if (selectedGuide) {
+      const refreshedGuide = shell.guides.find((guide) => guide.id === selectedGuide.id);
+      if (refreshedGuide) {
+        setSelectedGuide(refreshedGuide);
+      }
+    }
+
+    if (selectedVideo) {
+      const refreshedVideo = Object.values(shell.videosByCategory)
+        .flat()
+        .find((video) => video.id === selectedVideo.id);
+      if (refreshedVideo) {
+        setSelectedVideo(refreshedVideo);
+      }
+    }
+  };
+
+  const applyShellCache = (shell: AppShellCache) => {
+    setCategories(shell.categories);
+    setVideosByCategory(shell.videosByCategory);
+    setGuides(shell.guides);
+    setFeedItems(shell.feedItems);
+    syncSelectedEntities(shell);
+  };
+
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (currentView !== "adminDashboard" || adminUser) return;
+
+    navigateTo(
+      "adminLogin",
+      {
+        topicId: "",
+        video: null,
+        guide: null,
+        post: null,
+      },
+      { replace: true, resetDepth: true },
+    );
+  }, [adminUser, currentView]);
+
+  const applyNavigationState = (state: NavigationState) => {
+    setCurrentView(state.view);
+    setSelectedTopicId(state.topicId || "");
+    setSelectedVideo(state.video || null);
+    setSelectedGuide(state.guide || null);
+    setSelectedPost(state.post || null);
+    persistNavigationState(state);
+  };
 
   const navigateTo = (
     view: ViewState,
@@ -173,21 +165,53 @@ export default function App() {
       guide?: GuideDetail | null;
       post?: CommunityPost | null;
     } = {},
+    options: NavigateOptions = {},
   ) => {
-    const nextState: NavigationState = {
+    const currentHistoryState = window.history.state as NavigationState | null;
+    const nextComparableState = {
       view,
       topicId: context.topicId !== undefined ? context.topicId : selectedTopicId,
       video: context.video !== undefined ? context.video : selectedVideo,
       guide: context.guide !== undefined ? context.guide : selectedGuide,
       post: context.post !== undefined ? context.post : selectedPost,
     };
+    const isRapidDuplicateNavigation =
+      !!lastNavigationRequestRef.current &&
+      Date.now() - lastNavigationRequestRef.current.timestamp < DUPLICATE_NAVIGATION_WINDOW_MS &&
+      isSameNavigationState(lastNavigationRequestRef.current.state, nextComparableState);
+    const shouldReplace =
+      options.replace || isSameNavigationState(currentHistoryState, nextComparableState) || isRapidDuplicateNavigation;
+    const nextState: NavigationState = {
+      view,
+      depth: options.resetDepth
+        ? 0
+        : shouldReplace
+          ? (currentHistoryState?.depth ?? 0)
+          : (currentHistoryState?.depth ?? 0) + 1,
+      topicId: nextComparableState.topicId,
+      video: nextComparableState.video,
+      guide: nextComparableState.guide,
+      post: nextComparableState.post,
+    };
+    lastNavigationRequestRef.current = {
+      state: nextComparableState,
+      timestamp: Date.now(),
+    };
+    const nextStack = options.resetDepth
+      ? [nextState]
+      : shouldReplace
+        ? [...navigationStackRef.current.slice(0, Math.max(navigationStackRef.current.length - 1, 0)), nextState]
+        : [...navigationStackRef.current, nextState];
+    navigationStackRef.current = nextStack;
+    persistNavigationStack(nextStack);
 
-    setCurrentView(view);
-    setSelectedTopicId(nextState.topicId || "");
-    setSelectedVideo(nextState.video || null);
-    setSelectedGuide(nextState.guide || null);
-    setSelectedPost(nextState.post || null);
-    persistNavigationState(nextState);
+    applyNavigationState(nextState);
+
+    if (shouldReplace) {
+      history.replaceState(nextState, "", window.location.href);
+      return;
+    }
+
     history.pushState(nextState, "", window.location.href);
   };
 
@@ -196,54 +220,150 @@ export default function App() {
 
     const stateToPersist: NavigationState = {
       view: currentView,
+      depth: 0,
       topicId: selectedTopicId,
       video: selectedVideo,
       guide: selectedGuide,
       post: selectedPost,
     };
     persistNavigationState(stateToPersist);
+    navigationStackRef.current = [stateToPersist];
+    persistNavigationStack([stateToPersist]);
     history.replaceState(stateToPersist, "", window.location.href);
     initializedHistoryRef.current = true;
 
     const handlePopState = (event: PopStateEvent) => {
       const state = event.state as NavigationState | null;
       if (!state) {
-        setCurrentView(currentUser ? "homeFeed" : "userLogin");
+        const fallbackState = {
+          view: currentUserRef.current ? "homeFeed" : "userLogin",
+          depth: 0,
+          topicId: "",
+          video: null,
+          guide: null,
+          post: null,
+        };
+        navigationStackRef.current = [fallbackState];
+        persistNavigationStack([fallbackState]);
+        applyNavigationState(fallbackState);
         return;
       }
 
-      setCurrentView(state.view || "homeFeed");
-      setSelectedTopicId(state.topicId || "");
-      setSelectedVideo(state.video || null);
-      setSelectedGuide(state.guide || null);
-      setSelectedPost(state.post || null);
-      persistNavigationState(state);
+      const existingIndex = navigationStackRef.current.findIndex((entry) => isSameNavigationState(entry, state));
+      if (existingIndex >= 0) {
+        const nextStack = navigationStackRef.current.slice(0, existingIndex + 1);
+        navigationStackRef.current = nextStack;
+        persistNavigationStack(nextStack);
+      } else {
+        const nextStack = state.depth <= 0 ? [state] : [...navigationStackRef.current, state];
+        navigationStackRef.current = nextStack;
+        persistNavigationStack(nextStack);
+      }
+
+      applyNavigationState({
+        ...state,
+        depth: state.depth ?? 0,
+      });
     };
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [currentUser, currentView, selectedGuide, selectedPost, selectedTopicId, selectedVideo]);
+  }, [currentView, selectedGuide, selectedPost, selectedTopicId, selectedVideo]);
 
   useEffect(() => {
     if (!currentUser) return;
-    loadInitialData();
+    void loadInitialData();
   }, [currentUser]);
 
   useEffect(() => {
     localStorage.setItem(PERSONALIZED_PROFILE_STORAGE_KEY, JSON.stringify(personalizedProfile));
     if (currentUser) {
-      loadRecommendationRule(personalizedProfile);
+      void loadRecommendationRule(personalizedProfile);
     }
   }, [currentUser, personalizedProfile]);
 
-  const loadInitialData = async () => {
+  useEffect(() => {
+    const loadAttendanceRate = async () => {
+      if (!currentUser?.employeeId) {
+        setAttendanceRate(0);
+        return;
+      }
+
+      try {
+        const data = await apiRequestJson<{ logs?: Array<{ timestamp?: string }> }>(
+          `/users/${currentUser.employeeId}/attendance/logs?month=${currentYearMonth}`,
+        );
+        const [yearStr, monthStr] = currentYearMonth.split("-");
+        const year = Number(yearStr);
+        const monthIndex = Number(monthStr) - 1;
+        const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+        const uniqueDates = new Set((data.logs || []).map((log) => String(log.timestamp || "").slice(0, 10)).filter(Boolean));
+        const rate = daysInMonth > 0 ? Math.round((uniqueDates.size / daysInMonth) * 1000) / 10 : 0;
+        setAttendanceRate(rate);
+      } catch (error) {
+        console.error("Failed to load attendance rate:", error);
+        setAttendanceRate(0);
+      }
+    };
+
+    void loadAttendanceRate();
+  }, [currentUser?.employeeId, currentYearMonth]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const handleContentChange = async (scopes: string[]) => {
+      if (scopes.some((scope) => ["categories", "videos", "feed", "guides"].includes(scope))) {
+        await loadInitialData({ force: true, showLoading: false });
+      }
+
+      if (scopes.includes("recommendations")) {
+        await loadRecommendationRule(personalizedProfile, { force: true, silent: true });
+      }
+
+      if (scopes.includes("community") && selectedPost?.id) {
+        await loadCommunityPostDetail(selectedPost.id, { force: true, silent: true, navigate: false });
+      }
+    };
+
+    const stopListening = listenContentChanges((detail) => {
+      void handleContentChange(detail.scopes);
+    });
+    const stopRealtime = subscribeToRealtimeContentChanges((detail) => {
+      void handleContentChange(detail.scopes);
+    });
+
+    return () => {
+      stopListening();
+      stopRealtime();
+    };
+  }, [currentUser, personalizedProfile, selectedPost?.id]);
+
+  const loadInitialData = async ({
+    force = false,
+    showLoading = true,
+  }: {
+    force?: boolean;
+    showLoading?: boolean;
+  } = {}) => {
+    const cachedShell = readCachedValue<AppShellCache>(APP_SHELL_CACHE_KEY);
+
+    if (!force && cachedShell) {
+      applyShellCache(cachedShell);
+      setLoading(false);
+      return;
+    }
+
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       const [categoriesData, feedData, guidesData] = await Promise.all([
         apiRequestJson<{ categories?: Category[] }>("/categories"),
         apiRequestJson<{ items?: FeedItem[] }>("/feed"),
         apiRequestJson<{ guides?: GuideDetail[] }>("/guides?includeDrafts=false"),
       ]);
+
       const loadedCategories = categoriesData.categories || [];
 
       setCategories(loadedCategories);
@@ -260,30 +380,64 @@ export default function App() {
         nextVideosByCategory[category.id] = sortVideosByCreatedAt(serverVideos);
       });
 
-      setVideosByCategory(nextVideosByCategory);
-      await loadRecommendationRule(personalizedProfile);
+      const nextShell: AppShellCache = {
+        categories: loadedCategories,
+        videosByCategory: nextVideosByCategory,
+        guides: guidesData.guides || [],
+        feedItems: feedData.items || [],
+      };
+
+      applyShellCache(nextShell);
+      writeCachedValue(APP_SHELL_CACHE_KEY, nextShell);
     } catch (error) {
       console.error("Failed to load app data:", error);
-      setVideosByCategory(mockVideos);
+      if (cachedShell) {
+        applyShellCache(cachedShell);
+      } else {
+        setVideosByCategory(mockVideos);
+      }
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   };
 
-  const loadRecommendationRule = async (profile: PersonalizedProfileInput) => {
+  const loadRecommendationRule = async (
+    profile: PersonalizedProfileInput,
+    { force = false, silent = false }: { force?: boolean; silent?: boolean } = {},
+  ) => {
+    const cacheKey = getRecommendationCacheKey(profile);
+    const cachedRule = readCachedValue<PersonalizedRecommendationRule | null>(cacheKey);
+
+    if (!force && cachedRule !== null) {
+      setRecommendationRule(cachedRule);
+      return;
+    }
+
     try {
-      setRecommendationLoading(true);
+      if (!silent) {
+        setRecommendationLoading(true);
+      }
       const data = await apiRequestJson<{ rule?: PersonalizedRecommendationRule | null }>(
         `/personalized-recommendations?role=${encodeURIComponent(profile.role)}&careerStage=${encodeURIComponent(
           profile.careerStage,
         )}`,
       );
-      setRecommendationRule(data.rule || null);
+      const nextRule = data.rule || null;
+      setRecommendationRule(nextRule);
+      writeCachedValue(cacheKey, nextRule);
     } catch (error) {
       console.error("Failed to load recommendation rule:", error);
-      setRecommendationRule(null);
+      if (cachedRule !== null) {
+        setRecommendationRule(cachedRule);
+      } else {
+        setRecommendationRule(null);
+      }
     } finally {
-      setRecommendationLoading(false);
+      if (!silent) {
+        setRecommendationLoading(false);
+      }
     }
   };
 
@@ -291,7 +445,15 @@ export default function App() {
     try {
       setFeedLoading(true);
       const data = await apiRequestJson<{ items?: FeedItem[] }>("/feed");
-      setFeedItems(data.items || []);
+      const nextFeedItems = data.items || [];
+      setFeedItems(nextFeedItems);
+      const cachedShell = readCachedValue<AppShellCache>(APP_SHELL_CACHE_KEY);
+      if (cachedShell) {
+        writeCachedValue(APP_SHELL_CACHE_KEY, {
+          ...cachedShell,
+          feedItems: nextFeedItems,
+        });
+      }
     } catch (error) {
       console.error("Failed to refresh feed:", error);
     } finally {
@@ -299,29 +461,70 @@ export default function App() {
     }
   };
 
-  const loadGuides = async () => {
+  const loadGuides = async ({ silent = false }: { silent?: boolean } = {}) => {
     try {
-      setWikiLoading(true);
+      if (!silent) {
+        setWikiLoading(true);
+      }
       const data = await apiRequestJson<{ guides?: GuideDetail[] }>("/guides?includeDrafts=false");
-      setGuides(data.guides || []);
+      const nextGuides = data.guides || [];
+      setGuides(nextGuides);
+      const cachedShell = readCachedValue<AppShellCache>(APP_SHELL_CACHE_KEY);
+      if (cachedShell) {
+        const nextShell = {
+          ...cachedShell,
+          guides: nextGuides,
+        };
+        writeCachedValue(APP_SHELL_CACHE_KEY, nextShell);
+        syncSelectedEntities(nextShell);
+      }
     } catch (error) {
       console.error("Failed to refresh guides:", error);
     } finally {
-      setWikiLoading(false);
+      if (!silent) {
+        setWikiLoading(false);
+      }
     }
   };
 
-  const loadCommunityPostDetail = async (postId: string) => {
+  const loadCommunityPostDetail = async (
+    postId: string,
+    { force = false, silent = false, navigate = true }: { force?: boolean; silent?: boolean; navigate?: boolean } = {},
+  ) => {
+    const cacheKey = getCommunityPostCacheKey(postId);
+    const cachedPost = readCachedValue<CommunityPost>(cacheKey);
+
+    if (!force && cachedPost) {
+      if (navigate) {
+        navigateTo("communityPostDetail", { post: cachedPost });
+      } else {
+        setSelectedPost(cachedPost);
+      }
+      return;
+    }
+
     try {
-      setDetailLoading(true);
+      if (!silent) {
+        setDetailLoading(true);
+      }
       const data = await apiRequestJson<{ post?: CommunityPost | null }>(`/community/posts/${postId}`);
       if (data.post) {
-        navigateTo("communityPostDetail", { post: data.post });
+        writeCachedValue(cacheKey, data.post);
+        if (navigate) {
+          navigateTo("communityPostDetail", { post: data.post });
+        } else {
+          setSelectedPost(data.post);
+        }
       }
     } catch (error) {
       console.error("Failed to load community post detail:", error);
+      if (cachedPost && !navigate) {
+        setSelectedPost(cachedPost);
+      }
     } finally {
-      setDetailLoading(false);
+      if (!silent) {
+        setDetailLoading(false);
+      }
     }
   };
 
@@ -344,27 +547,39 @@ export default function App() {
   };
 
   const handleBack = () => {
-    if (window.history.length > 1) {
-      window.history.back();
+    const currentHistoryState = window.history.state as NavigationState | null;
+
+    if ((currentHistoryState?.depth ?? 0) > 0) {
+      history.back();
       return;
     }
 
-    navigateTo(currentUser ? "homeFeed" : "userLogin", {
+    const fallbackState = {
+      view: currentUser ? "homeFeed" : "userLogin",
+      depth: 0,
       topicId: "",
       video: null,
       guide: null,
       post: null,
-    });
+    };
+    navigationStackRef.current = [fallbackState];
+    persistNavigationStack([fallbackState]);
+    applyNavigationState(fallbackState);
+    history.replaceState(fallbackState, "", window.location.href);
   };
 
   const handleUserLogin = (user: any) => {
     setCurrentUser(user);
-    navigateTo("homeFeed", {
-      topicId: "",
-      video: null,
-      guide: null,
-      post: null,
-    });
+    navigateTo(
+      "homeFeed",
+      {
+        topicId: "",
+        video: null,
+        guide: null,
+        post: null,
+      },
+      { replace: true, resetDepth: true },
+    );
   };
 
   const handleUserLogout = () => {
@@ -374,35 +589,46 @@ export default function App() {
     setSelectedGuide(null);
     setSelectedPost(null);
     setSelectedTopicId("");
-    navigateTo("userLogin", {
-      topicId: "",
-      video: null,
-      guide: null,
-      post: null,
-    });
+    navigateTo(
+      "userLogin",
+      {
+        topicId: "",
+        video: null,
+        guide: null,
+        post: null,
+      },
+      { replace: true, resetDepth: true },
+    );
   };
 
   const handleAdminLogin = (admin: any) => {
     setAdminUser(admin);
-    navigateTo("adminDashboard", {
-      topicId: "",
-      video: null,
-      guide: null,
-      post: null,
-    });
+    navigateTo(
+      "adminDashboard",
+      {
+        topicId: "",
+        video: null,
+        guide: null,
+        post: null,
+      },
+      { replace: true },
+    );
   };
 
   const handleAdminLogout = () => {
     setAdminUser(null);
-    navigateTo(currentUser ? "homeFeed" : "userLogin", {
-      topicId: "",
-      video: null,
-      guide: null,
-      post: null,
-    });
+    navigateTo(
+      currentUser ? "homeFeed" : "userLogin",
+      {
+        topicId: "",
+        video: null,
+        guide: null,
+        post: null,
+      },
+      { replace: true, resetDepth: true },
+    );
   };
 
-  const allVideos = useMemo(() => Object.values(videosByCategory).flat(), [videosByCategory]);
   const currentTopic = useMemo(
     () => categories.find((category) => category.id === selectedTopicId) || null,
     [categories, selectedTopicId],
@@ -415,6 +641,9 @@ export default function App() {
   }
 
   if (currentView === "adminDashboard") {
+    if (!adminUser) {
+      return <AdminLogin onLogin={handleAdminLogin} onBack={handleBack} />;
+    }
     return <AdminDashboard admin={adminUser} onLogout={handleAdminLogout} />;
   }
 
@@ -422,521 +651,106 @@ export default function App() {
     return <UserLogin onLogin={handleUserLogin} onBack={handleBack} />;
   }
 
-  const renderFeedItem = (item: FeedItem) => {
-    const icon =
-      item.itemType === "video" ? (
-        <VideoIcon className="h-4 w-4" />
-      ) : item.itemType === "image" ? (
-        <FileImage className="h-4 w-4" />
-      ) : (
-        <FileText className="h-4 w-4" />
-      );
-
-    return (
-      <Card
-        key={item.id}
-        className="overflow-hidden border-0 bg-white/90 shadow-lg shadow-slate-200/50 transition hover:-translate-y-0.5 hover:shadow-xl"
-      >
-        <button type="button" onClick={() => handleFeedItemSelect(item)} className="block w-full text-left">
-          <div className="grid gap-0 md:grid-cols-[1.1fr_1fr]">
-            <div className="relative min-h-56 overflow-hidden bg-slate-100">
-              <img src={item.thumbnailUrl} alt={item.title} className="h-full w-full object-cover" />
-              <div className="absolute left-4 top-4">
-                <Badge className="bg-slate-900/85 text-white">{icon}{item.itemType === "video" ? "교육영상" : item.itemType === "image" ? "이미지 게시물" : "문서 게시물"}</Badge>
-              </div>
-            </div>
-            <div className="flex flex-col justify-between p-6">
-              <div className="space-y-3">
-                <p className="text-sm text-slate-500">{formatDateTime(item.publishedAt)}</p>
-                <h3 className="text-2xl font-semibold tracking-tight text-slate-900">{item.title}</h3>
-                <p className="line-clamp-4 text-base leading-relaxed text-slate-600">{item.summary}</p>
-              </div>
-              <div className="mt-6 flex items-center gap-2 text-sm font-medium text-blue-700">
-                <span>상세페이지 보기</span>
-                <ArrowLeft className="h-4 w-4 rotate-180" />
-              </div>
-            </div>
-          </div>
-        </button>
-      </Card>
-    );
-  };
-
-  const renderEducationVideoCards = () => (
-    <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-      {categories.map((category) => (
-        <button
-          key={category.id}
-          type="button"
-          onClick={() => navigateTo("videoList", { topicId: category.id, video: null })}
-          className="group overflow-hidden rounded-[28px] bg-white text-left shadow-lg shadow-slate-200/60 transition hover:-translate-y-1 hover:shadow-xl"
-        >
-          <div className="relative h-48 overflow-hidden">
-            <img src={category.image} alt={category.title} className="h-full w-full object-cover transition duration-300 group-hover:scale-105" />
-            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-slate-900/20 to-transparent" />
-            <div className="absolute bottom-4 left-4 right-4">
-              <p className="text-sm font-medium text-blue-100">{category.subtitle}</p>
-              <h3 className="mt-1 text-2xl font-semibold text-white">{category.title}</h3>
-            </div>
-          </div>
-          <div className="space-y-3 p-5">
-            <p className="line-clamp-2 text-sm leading-relaxed text-slate-600">{category.description}</p>
-            <div className="flex items-center justify-between">
-              <Badge variant="secondary">{videosByCategory[category.id]?.length || 0}개 영상</Badge>
-              <span className="text-sm font-medium text-blue-700">영상 보기</span>
-            </div>
-          </div>
-        </button>
-      ))}
-    </div>
-  );
-
-  const renderVideoDetail = () => {
-    if (!selectedVideo) return null;
-
-    return (
-      <div className="max-w-6xl mx-auto space-y-8">
-        <div className="space-y-2">
-          <Badge variant="secondary">영상 상세페이지</Badge>
-          <h2 className="text-3xl font-bold text-slate-900">{selectedVideo.title}</h2>
-          <p className="text-sm text-slate-500">
-            {formatDateTime(selectedVideo.updatedAt || selectedVideo.createdAt)} · {formatDurationLabel(selectedVideo.duration)}
-          </p>
-        </div>
-
-        <div className="grid gap-8 lg:grid-cols-[1.8fr_1fr]">
-          <div className="space-y-6">
-            <VideoPlayer video={selectedVideo} categoryId={selectedVideo.categoryId || selectedTopicId} />
-            <Card>
-              <CardHeader>
-                <CardTitle>영상 설명</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="whitespace-pre-wrap leading-relaxed text-slate-700">{selectedVideo.description}</p>
-              </CardContent>
-            </Card>
-          </div>
-          <div className="space-y-6">
-            <VideoDescription video={selectedVideo} />
-            <Card>
-              <CardHeader>
-                <CardTitle>관련 영상</CardTitle>
-                <CardDescription>같은 주제에서 이어서 볼 수 있는 콘텐츠입니다.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {(videosByCategory[selectedVideo.categoryId || selectedTopicId] || [])
-                  .filter((video) => video.id !== selectedVideo.id)
-                  .slice(0, 3)
-                  .map((video) => (
-                    <VideoItem key={video.id} video={video} onSelect={handleOpenVideoDetail} />
-                  ))}
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const renderPostDetail = () => {
-    if (!selectedPost) return null;
-
-    const imageAssets = selectedPost.assets.filter((asset) => asset.assetType === "image");
-    const documentAssets = selectedPost.assets.filter((asset) => asset.assetType === "document");
-
-    return (
-      <div className="mx-auto max-w-5xl space-y-8">
-        <div className="space-y-3">
-          <Badge variant="secondary">게시물 상세페이지</Badge>
-          <h2 className="text-3xl font-bold text-slate-900">{selectedPost.title}</h2>
-          <div className="flex flex-wrap items-center gap-3 text-sm text-slate-500">
-            <span>{formatDateTime(selectedPost.publishedAt || selectedPost.updatedAt)}</span>
-            <span>작성자 {selectedPost.authorName || "관리자"}</span>
-            <span>좋아요 {selectedPost.likeCount}</span>
-            <span>댓글 {selectedPost.commentCount}</span>
-          </div>
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>요약 및 본문</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {selectedPost.summary ? <p className="text-lg font-medium text-slate-800">{selectedPost.summary}</p> : null}
-            <p className="whitespace-pre-wrap leading-relaxed text-slate-700">{selectedPost.content || "본문이 없습니다."}</p>
-          </CardContent>
-        </Card>
-
-        {imageAssets.length > 0 ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>이미지 미리보기</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-2">
-              {imageAssets.map((asset) => (
-                <div key={asset.id} className="overflow-hidden rounded-2xl border bg-slate-50">
-                  {asset.previewUrl || asset.thumbnailUrl ? (
-                    <img
-                      src={asset.previewUrl || asset.thumbnailUrl || ""}
-                      alt={asset.fileName}
-                      className="h-72 w-full object-cover"
-                    />
-                  ) : null}
-                  <div className="p-4">
-                    <p className="font-medium text-slate-900">{asset.fileName}</p>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        ) : null}
-
-        {documentAssets.length > 0 ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>문서 첨부</CardTitle>
-              <CardDescription>PDF 또는 문서 원본을 확인할 수 있습니다.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {documentAssets.map((asset) => (
-                <div key={asset.id} className="rounded-2xl border p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="font-medium text-slate-900">{asset.fileName}</p>
-                      <p className="text-sm text-slate-500">{asset.mimeType || "문서"}</p>
-                    </div>
-                    {asset.previewUrl ? (
-                      <a
-                        href={asset.previewUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white"
-                      >
-                        문서 열기
-                      </a>
-                    ) : null}
-                  </div>
-                  {asset.previewUrl && asset.mimeType?.includes("pdf") ? (
-                    <div className="mt-4 overflow-hidden rounded-xl border">
-                      <iframe src={asset.previewUrl} title={asset.fileName} className="h-[480px] w-full bg-white" />
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        ) : null}
-      </div>
-    );
-  };
-
-  const renderWikiList = () => (
-    <div className="space-y-6">
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <Badge variant="secondary">위키문서</Badge>
-          <h2 className="mt-2 text-3xl font-bold text-slate-900">운영 가이드와 위키 문서</h2>
-          <p className="mt-2 text-slate-600">공개된 교육 가이드를 문서 형태로 탐색할 수 있습니다.</p>
-        </div>
-        <Button variant="outline" onClick={loadGuides} disabled={wikiLoading}>
-          {wikiLoading ? "불러오는 중..." : "새로고침"}
-        </Button>
-      </div>
-      <div className="grid gap-4">
-        {guides.map((guide) => (
-          <button
-            key={guide.id}
-            type="button"
-            onClick={() => navigateTo("wikiDetail", { guide })}
-            className="rounded-[24px] border bg-white p-6 text-left shadow-sm transition hover:border-blue-300 hover:shadow-md"
-          >
-            <div className="flex flex-wrap items-center gap-3">
-              <Badge variant="outline">v{guide.version}</Badge>
-              <span className="text-sm text-slate-500">{formatDateTime(guide.updatedAt)}</span>
-            </div>
-            <h3 className="mt-3 text-2xl font-semibold text-slate-900">{guide.title}</h3>
-            <p className="mt-3 line-clamp-3 text-slate-600">{guide.description}</p>
-            <p className="mt-4 text-sm font-medium text-blue-700">문서 읽기</p>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-
-  const renderWikiDetail = () => {
-    if (!selectedGuide) return null;
-
-    return (
-      <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[280px_1fr]">
-        <Card className="h-fit">
-          <CardHeader>
-            <CardTitle>문서 목차</CardTitle>
-            <CardDescription>{selectedGuide.title}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {selectedGuide.sections.map((section) => (
-              <button
-                key={section.id}
-                type="button"
-                onClick={() => {
-                  const target = document.getElementById(`guide-section-${section.id}`);
-                  target?.scrollIntoView({ behavior: "smooth", block: "start" });
-                }}
-                className="block w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100"
-                style={{ paddingLeft: `${section.depth * 14 + 12}px` }}
-              >
-                {section.title}
-              </button>
-            ))}
-          </CardContent>
-        </Card>
-
-        <div className="space-y-6">
-          <div className="space-y-3">
-            <Badge variant="secondary">위키 상세</Badge>
-            <h2 className="text-3xl font-bold text-slate-900">{selectedGuide.title}</h2>
-            <p className="text-slate-600">{selectedGuide.description}</p>
-            <p className="text-sm text-slate-500">{formatDateTime(selectedGuide.updatedAt)}</p>
-          </div>
-
-          {selectedGuide.sections.map((section) => (
-            <Card key={section.id} id={`guide-section-${section.id}`}>
-              <CardHeader>
-                <CardTitle>{section.title}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="whitespace-pre-wrap leading-relaxed text-slate-700">
-                  {markdownToPlainText(section.markdownContent)}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-    );
-  };
-
-  const renderPersonalizedEducation = () => (
-    <div className="mx-auto max-w-6xl space-y-8">
-      <div className="space-y-3">
-        <Badge variant="secondary">나를 위한 맞춤형 교육</Badge>
-        <h2 className="text-3xl font-bold text-slate-900">직책과 경력 구분에 맞는 추천 영상</h2>
-        <p className="text-slate-600">선택값은 언제든 바꿀 수 있고, 변경 즉시 권장 교육 목록이 다시 구성됩니다.</p>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>추천 기준 선택</CardTitle>
-          <CardDescription>현재 내 조건에 맞는 교육 영상을 바로 확인하세요.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-slate-700">직책</p>
-            <Select
-              value={personalizedProfile.role}
-              onValueChange={(value) =>
-                setPersonalizedProfile((prev) => ({ ...prev, role: value as PersonalizedProfileInput["role"] }))
-              }
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="기관사">기관사</SelectItem>
-                <SelectItem value="차장">차장</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-slate-700">경력 구분</p>
-            <Select
-              value={personalizedProfile.careerStage}
-              onValueChange={(value) =>
-                setPersonalizedProfile((prev) => ({
-                  ...prev,
-                  careerStage: value as PersonalizedProfileInput["careerStage"],
-                }))
-              }
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="신입">신입</SelectItem>
-                <SelectItem value="경력">경력</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge>{personalizedProfile.role}</Badge>
-          <Badge variant="secondary">{personalizedProfile.careerStage}</Badge>
-        </div>
-
-        {recommendationLoading ? (
-          <Card>
-            <CardContent className="py-12 text-center">추천 영상을 불러오는 중...</CardContent>
-          </Card>
-        ) : personalizedVideos.length > 0 ? (
-          <div className="space-y-4">
-            {personalizedVideos.map((video) => (
-              <VideoItem key={video.id} video={video} onSelect={handleOpenVideoDetail} />
-            ))}
-          </div>
-        ) : (
-          <Card>
-            <CardContent className="py-12 text-center text-slate-600">
-              현재 선택한 조건에 등록된 추천 영상이 없습니다. 다른 조건으로 바꾸거나 관리자에게 추천 규칙을 등록해달라고 요청하세요.
-            </CardContent>
-          </Card>
-        )}
-      </div>
-    </div>
-  );
-
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#eff6ff_0%,#f8fafc_22%,#ffffff_100%)] text-slate-900">
-      <header className="sticky top-0 z-40 border-b border-white/70 bg-white/85 backdrop-blur">
-        <div className="container mx-auto flex items-center justify-between gap-4 px-4 py-4">
-          <div className="flex items-center gap-3">
-            {currentView !== "homeFeed" ? (
-              <Button variant="ghost" size="sm" onClick={handleBack}>
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-            ) : null}
-            <img src={logo} alt="동대문승무사업소 불안제로" className="h-10 w-10 object-contain" />
-            <div>
-              <h1 className="text-lg font-bold">동대문승무사업소 불안제로</h1>
-              <p className="text-sm text-slate-500">교육영상 · 문서 · 맞춤 학습 허브</p>
-            </div>
-          </div>
-        </div>
-      </header>
+    <div className="flex min-h-screen flex-col bg-[linear-gradient(180deg,#eff6ff_0%,#f8fafc_22%,#ffffff_100%)] text-slate-900">
+      <AppHeader canGoBack={currentView !== "homeFeed"} onBack={handleBack} />
 
-      <main className="container mx-auto px-4 py-8">
+      <main className="app-shell-container relative z-0 container mx-auto flex-1 w-full px-4 py-8">
         {loading ? (
-          <div className="flex min-h-[50vh] items-center justify-center">
-            <Card className="w-full max-w-lg">
-              <CardContent className="py-16 text-center">서비스 데이터를 불러오는 중...</CardContent>
-            </Card>
-          </div>
+          <AppLoadingScreen />
         ) : (
-          <div className="space-y-8">
+          <div className="space-y-6">
             {currentView === "homeFeed" ? (
-              <>
-                <section className="overflow-hidden rounded-[32px] bg-[linear-gradient(135deg,#0f172a_0%,#1d4ed8_46%,#38bdf8_100%)] px-6 py-8 text-white shadow-2xl shadow-blue-200/40 md:px-10">
-                  <div className="max-w-3xl">
-                    <p className="text-sm font-medium tracking-[0.22em] text-blue-100 uppercase">Main Feed</p>
-                    <h2 className="mt-4 text-3xl font-semibold tracking-tight md:text-5xl">
-                      {currentUser?.name || "사용자"}님, 오늘 필요한 교육과 문서를 한 화면에서 확인하세요.
-                    </h2>
-                    <p className="mt-4 max-w-2xl text-base leading-relaxed text-blue-50 md:text-lg">
-                      최신 교육영상과 문서/이미지 게시물을 피드처럼 정렬했습니다. 필요한 자료를 눌러 상세페이지에서 바로 확인할 수 있습니다.
-                    </p>
-                    <div className="mt-8 grid gap-3 md:grid-cols-3">
-                      <Button
-                        onClick={() => navigateTo("educationVideos", { video: null, guide: null, post: null })}
-                        className="h-12 justify-start border border-white/80 bg-white text-slate-900 shadow-lg shadow-slate-950/10 hover:bg-blue-50"
-                      >
-                        <Play className="mr-2 h-4 w-4" />
-                        교육영상
-                      </Button>
-                      <Button
-                        onClick={() => navigateTo("wikiDocs", { video: null, guide: null, post: null })}
-                        className="h-12 justify-start border border-white/35 bg-white/20 text-white shadow-lg shadow-slate-950/10 backdrop-blur-sm hover:bg-white/30"
-                      >
-                        <BookOpen className="mr-2 h-4 w-4" />
-                        위키문서
-                      </Button>
-                      <Button
-                        onClick={() => navigateTo("personalizedEducation", { video: null, guide: null, post: null })}
-                        className="h-12 justify-start border border-slate-100/20 bg-slate-950/40 text-white shadow-lg shadow-slate-950/20 backdrop-blur-sm hover:bg-slate-950/55"
-                      >
-                        <Sparkles className="mr-2 h-4 w-4" />
-                        나를 위한 맞춤형 교육
-                      </Button>
-                    </div>
-                  </div>
-                </section>
-
-                <section className="space-y-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <h3 className="text-2xl font-semibold">최신 게시물</h3>
-                      <p className="text-slate-600">교육영상과 문서/이미지 게시물을 최신순으로 보여줍니다.</p>
-                    </div>
-                    <Button variant="outline" onClick={refreshFeed} disabled={feedLoading}>
-                      {feedLoading ? "새로고침 중..." : "새로고침"}
-                    </Button>
-                  </div>
-                  <div className="space-y-6">
-                    {feedItems.map(renderFeedItem)}
-                  </div>
-                </section>
-              </>
+              <HomeFeedPage
+                currentUser={currentUser}
+                attendanceRate={attendanceRate}
+                isComposerOpen={isComposerOpen}
+                feedLoading={feedLoading}
+                feedItems={feedItems}
+                onToggleComposer={() => setIsComposerOpen((prev) => !prev)}
+                onRefreshFeed={() => void refreshFeed()}
+                onSubmittedComposer={() => {
+                  setIsComposerOpen(false);
+                  void refreshFeed();
+                }}
+                onCloseComposer={() => setIsComposerOpen(false)}
+                onOpenEducationVideos={() => navigateTo("educationVideos", { video: null, guide: null, post: null })}
+                onOpenWikiDocs={() => navigateTo("wikiDocs", { video: null, guide: null, post: null })}
+                onOpenPersonalizedEducation={() =>
+                  navigateTo("personalizedEducation", { video: null, guide: null, post: null })
+                }
+                onSelectFeedItem={handleFeedItemSelect}
+              />
             ) : null}
 
             {currentView === "educationVideos" ? (
-              <section className="space-y-6">
-                <div className="space-y-2">
-                  <Badge variant="secondary">교육영상</Badge>
-                  <h2 className="text-3xl font-bold text-slate-900">주제별 교육 영상 탐색</h2>
-                  <p className="text-slate-600">카테고리를 선택하면 관련 영상 목록과 상세 재생 화면으로 이동합니다.</p>
-                </div>
-                {renderEducationVideoCards()}
-              </section>
+              <EducationVideosPage
+                categories={categories}
+                videosByCategory={videosByCategory}
+                onSelectCategory={(categoryId) => navigateTo("videoList", { topicId: categoryId, video: null })}
+              />
             ) : null}
 
             {currentView === "videoList" ? (
-              <section className="space-y-6">
-                <div className="space-y-2">
-                  <Badge variant="secondary">교육영상 목록</Badge>
-                  <h2 className="text-3xl font-bold text-slate-900">{currentTopic?.title}</h2>
-                  <p className="text-slate-600">{currentTopic?.description}</p>
-                </div>
-                <div className="space-y-4">
-                  {currentVideos.map((video) => (
-                    <VideoItem key={video.id} video={video} onSelect={handleOpenVideoDetail} />
-                  ))}
-                </div>
-              </section>
+              <VideoListPage
+                currentTopic={currentTopic}
+                currentVideos={currentVideos}
+                onSelectVideo={handleOpenVideoDetail}
+              />
             ) : null}
 
-            {currentView === "videoDetail" ? renderVideoDetail() : null}
-            {currentView === "communityPostDetail" ? (detailLoading ? <Card><CardContent className="py-16 text-center">게시물 상세를 불러오는 중...</CardContent></Card> : renderPostDetail()) : null}
-            {currentView === "wikiDocs" ? renderWikiList() : null}
-            {currentView === "wikiDetail" ? renderWikiDetail() : null}
-            {currentView === "personalizedEducation" ? renderPersonalizedEducation() : null}
+            {currentView === "videoDetail" ? (
+              <VideoDetailPage
+                selectedVideo={selectedVideo}
+                selectedTopicId={selectedTopicId}
+                videosByCategory={videosByCategory}
+                onSelectVideo={handleOpenVideoDetail}
+              />
+            ) : null}
+
+            {currentView === "communityPostDetail" ? (
+              detailLoading ? (
+                <Card>
+                  <CardContent className="py-16 text-center">게시물 상세를 불러오는 중...</CardContent>
+                </Card>
+              ) : (
+                <CommunityPostDetailPage post={selectedPost} />
+              )
+            ) : null}
+
+            {currentView === "wikiDocs" ? (
+              <WikiListPage
+                guides={guides}
+                wikiLoading={wikiLoading}
+                onRefresh={() => void loadGuides()}
+                onSelectGuide={(guide) => navigateTo("wikiDetail", { guide })}
+              />
+            ) : null}
+
+            {currentView === "wikiDetail" ? <WikiDetailPage guide={selectedGuide} /> : null}
+
+            {currentView === "personalizedEducation" ? (
+              <PersonalizedEducationPage
+                personalizedProfile={personalizedProfile}
+                recommendationLoading={recommendationLoading}
+                personalizedVideos={personalizedVideos}
+                onUpdateProfile={setPersonalizedProfile}
+                onSelectVideo={handleOpenVideoDetail}
+              />
+            ) : null}
+
             {currentView === "myPage" ? <MyPage videosByCategory={videosByCategory} onBack={handleBack} /> : null}
           </div>
         )}
       </main>
 
       {currentUser ? (
-        <footer className="border-t bg-white/80 backdrop-blur">
-          <div className="container mx-auto flex flex-wrap items-center justify-center gap-3 px-4 py-5">
-            <Button variant="outline" size="sm" onClick={() => navigateTo("homeFeed", { video: null, guide: null, post: null })}>
-              <Home className="mr-2 h-4 w-4" />
-              메인
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => navigateTo("myPage", { video: null, guide: null, post: null })}>
-              <User className="mr-2 h-4 w-4" />
-              내 페이지
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => navigateTo("adminLogin", { video: null, guide: null, post: null })}>
-              <Settings className="mr-2 h-4 w-4" />
-              관리자
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleUserLogout}>
-              <LogOut className="mr-2 h-4 w-4" />
-              로그아웃
-            </Button>
-          </div>
-        </footer>
+        <AppFooter
+          onGoHome={() => navigateTo("homeFeed", { video: null, guide: null, post: null })}
+          onGoMyPage={() => navigateTo("myPage", { video: null, guide: null, post: null })}
+          onGoAdmin={() => navigateTo("adminLogin", { video: null, guide: null, post: null })}
+          onLogout={handleUserLogout}
+        />
       ) : null}
     </div>
   );

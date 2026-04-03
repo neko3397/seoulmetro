@@ -23,10 +23,13 @@ export interface CommunityAsset {
   id: string;
   postId: string;
   driveFileId?: string | null;
+  storagePath?: string | null;
   fileName: string;
   mimeType?: string | null;
   assetType: "document" | "image" | "video";
   previewUrl?: string | null;
+  downloadUrl?: string | null;
+  previewKind?: "pdf-inline" | "image-inline" | "download-only" | null;
   thumbnailUrl?: string | null;
   fileSize?: number | null;
   sortOrder: number;
@@ -43,6 +46,7 @@ export interface CommunityPost {
   content?: string | null;
   postType: string;
   isPublished: boolean;
+  approvalStatus: "draft" | "pending_review" | "published" | "rejected";
   authorEmployeeId?: string | null;
   authorName?: string | null;
   publishedAt?: string | null;

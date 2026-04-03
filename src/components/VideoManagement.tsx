@@ -13,6 +13,7 @@ import { Progress } from './ui/progress';
 import { Alert, AlertDescription } from './ui/alert';
 import { Plus, Edit, Trash2, Video, ExternalLink, Upload, Youtube, FileVideo, Info } from 'lucide-react';
 import { projectId, publicAnonKey } from '../utils/supabase/info';
+import { notifyContentChanged } from '../lib/contentSync';
 
 interface Video {
   id: string;
@@ -342,6 +343,7 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
 
       if (data.success) {
         await loadVideos(selectedCategory);
+        notifyContentChanged(['videos', 'feed', 'recommendations']);
         onStatsUpdate();
         setIsDialogOpen(false);
         resetForm();
@@ -376,6 +378,7 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
 
       if (data.success) {
         await loadVideos(selectedCategory);
+        notifyContentChanged(['videos', 'feed', 'recommendations']);
         onStatsUpdate();
       } else {
         alert(data.error || '영상 삭제에 실패했습니다.');
@@ -457,14 +460,11 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
       <Card>
         <CardHeader>
           <CardTitle>영상 관리</CardTitle>
-          <CardDescription>
-            카테고리별 교육 영상을 추가, 수정, 삭제할 수 있습니다.
-          </CardDescription>
+
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center space-x-4">
-              <Label htmlFor="category-select">카테고리:</Label>
               <Select
                 value={selectedCategory}
                 onValueChange={setSelectedCategory}
@@ -485,8 +485,7 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild>
                 <Button onClick={resetForm} disabled={!selectedCategory}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  새 영상 추가
+                  <Plus className="h-4 w-4" />
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-w-2xl">

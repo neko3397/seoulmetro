@@ -26,7 +26,18 @@ const supabase = createClient(
 
 const VIDEO_BUCKET = "make-a8898ff1-videos";
 const IMAGE_BUCKET = "make-a8898ff1-images";
+const DOCUMENT_BUCKET = "make-a8898ff1-documents";
 const NOW = () => new Date().toISOString();
+const DOCUMENT_SIGNED_URL_TTL = 60 * 60 * 24 * 7;
+const ALLOWED_DOCUMENT_TYPES = new Map([
+  ["application/pdf", "pdf"],
+  ["application/vnd.ms-powerpoint", "ppt"],
+  ["application/vnd.openxmlformats-officedocument.presentationml.presentation", "pptx"],
+  ["image/jpeg", "jpg"],
+  ["image/png", "png"],
+  ["image/webp", "webp"],
+  ["image/gif", "gif"],
+]);
 
 const defaultCategories = [
   {
@@ -138,6 +149,7 @@ const defaultCommunityPost = {
   content: "새로운 커뮤니티 공간입니다. 교육 자료와 공지사항을 이곳에 등록하세요.",
   post_type: "notice",
   is_published: true,
+  approval_status: "published",
   author_employee_id: "ADMIN001",
   author_name: "시스템 관리자",
 };
@@ -161,6 +173,120 @@ function slugify(input: string) {
     .replace(/[^a-z0-9가-힣\s-]/g, "")
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-") || `item-${Date.now()}`;
+}
+
+function sanitizeFileName(fileName: string) {
+  const trimmed = String(fileName || "").trim();
+  return (trimmed || "document").replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+function getCommunityAssetType(file: File) {
+  const byMimeType = ALLOWED_DOCUMENT_TYPES.get(file.type);
+  if (byMimeType) {
+    return {
+      extension: byMimeType,
+      mimeType: file.type,
+      assetType: file.type.startsWith("image/") ? "image" : "document",
+    };
+  }
+  const extension = file.name.split(".").pop()?.toLowerCase() || "";
+  if (!["pdf", "ppt", "pptx", "jpg", "jpeg", "png", "webp", "gif"].includes(extension)) {
+    return null;
+  }
+  if (["jpg", "jpeg", "png", "webp", "gif"].includes(extension)) {
+    const normalizedExtension = extension === "jpeg" ? "jpg" : extension;
+    const mimeType =
+      normalizedExtension === "jpg"
+        ? "image/jpeg"
+        : normalizedExtension === "png"
+          ? "image/png"
+          : normalizedExtension === "webp"
+            ? "image/webp"
+            : "image/gif";
+    return {
+      extension: normalizedExtension,
+      mimeType,
+      assetType: "image",
+    };
+  }
+  return {
+    extension,
+    mimeType:
+      extension === "pdf"
+        ? "application/pdf"
+        : extension === "ppt"
+          ? "application/vnd.ms-powerpoint"
+          : "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    assetType: "document",
+  };
+}
+
+async function createSignedAssetUrl(storagePath: string) {
+  if (!storagePath) return null;
+  const { data, error } = await supabase.storage
+    .from(DOCUMENT_BUCKET)
+    .createSignedUrl(storagePath, DOCUMENT_SIGNED_URL_TTL, { download: false });
+  if (error) {
+    console.warn("Failed to create signed asset url:", storagePath, error.message);
+    return null;
+  }
+  return data?.signedUrl || null;
+}
+
+async function mapCommunityAsset(asset: any) {
+  const storagePath = asset.storage_path || null;
+  const previewKind =
+    asset.metadata?.previewKind ||
+    (asset.asset_type === "image"
+      ? "image-inline"
+      : asset.mime_type?.includes("pdf")
+        ? "pdf-inline"
+        : storagePath
+          ? "download-only"
+          : null);
+  const signedUrl = storagePath ? await createSignedAssetUrl(storagePath) : null;
+
+  return {
+    id: asset.id,
+    postId: asset.post_id,
+    driveFileId: null,
+    storagePath,
+    fileName: asset.file_name,
+    mimeType: asset.mime_type,
+    assetType: asset.asset_type,
+    previewUrl:
+      previewKind === "pdf-inline" || previewKind === "image-inline"
+        ? signedUrl || asset.preview_url || null
+        : asset.preview_url || null,
+    downloadUrl: signedUrl || asset.preview_url || null,
+    previewKind,
+    thumbnailUrl: asset.thumbnail_url || (asset.asset_type === "image" ? signedUrl || asset.preview_url || null : null),
+    fileSize: asset.file_size,
+    sortOrder: asset.sort_order,
+    syncStatus: asset.sync_status,
+    metadata: asset.metadata,
+    createdAt: asset.created_at,
+    updatedAt: asset.updated_at,
+  };
+}
+
+function normalizeApprovalStatus(value: unknown) {
+  const status = String(value || "").trim();
+  if (["draft", "pending_review", "published", "rejected"].includes(status)) {
+    return status;
+  }
+  return "draft";
+}
+
+async function assertKnownUser(employeeId: string, name?: string | null) {
+  const normalizedEmployeeId = canonicalizeEmployeeId(employeeId);
+  if (normalizedEmployeeId.length !== 8) return null;
+  const user = await getUserByEmployeeId(normalizedEmployeeId);
+  if (!user) return null;
+  if (name && canonicalizeEmployeeName(name) !== canonicalizeEmployeeName(user.name)) {
+    return null;
+  }
+  return user;
 }
 
 function chunkText(text: string, chunkSize: number, overlap: number) {
@@ -274,6 +400,7 @@ async function ensureDefaultGuideAndCommunity() {
 async function initializeServer() {
   await ensureBucket(VIDEO_BUCKET, false);
   await ensureBucket(IMAGE_BUCKET, true);
+  await ensureBucket(DOCUMENT_BUCKET, false);
   await ensureDefaultAdmin();
   await ensureDefaultEducationData();
   await ensureDefaultGuideAndCommunity();
@@ -286,6 +413,16 @@ function mapAdmin(row: any) {
     employeeId: row.employee_id,
     password: row.password,
     isMainAdmin: Boolean(row.is_main_admin),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapAuthorizedEmployee(row: any) {
+  return {
+    employeeId: row.employee_id,
+    name: row.name,
+    isActive: Boolean(row.is_active),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -350,6 +487,35 @@ async function fetchAuthorizedEmployees() {
     employeeId: employee.employee_id,
     name: employee.name,
   }));
+}
+
+async function listAuthorizedEmployees(search = "") {
+  let query = supabase
+    .from("authorized_employees")
+    .select("employee_id, name, is_active, created_at, updated_at")
+    .eq("is_active", true)
+    .order("created_at", { ascending: false });
+
+  const normalizedSearch = String(search || "").trim();
+  if (normalizedSearch) {
+    query = query.or(
+      `employee_id.ilike.%${normalizedSearch}%,name.ilike.%${normalizedSearch}%,normalized_name.ilike.%${normalizedSearch}%`,
+    );
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data || []).map(mapAuthorizedEmployee);
+}
+
+async function getAuthorizedEmployeeByEmployeeId(employeeId: string) {
+  const { data, error } = await supabase
+    .from("authorized_employees")
+    .select("employee_id, name, normalized_name, is_active, created_at, updated_at")
+    .eq("employee_id", employeeId)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
 }
 
 async function getUserByEmployeeId(employeeId: string) {
@@ -786,9 +952,9 @@ async function logChatQuery(question: string, answer: string, status: string, mo
 async function fetchCommunityPosts(includeDrafts = true, employeeId?: string | null) {
   let query = supabase
     .from("community_posts")
-    .select("id, title, summary, content, post_type, is_published, author_employee_id, author_name, published_at, created_at, updated_at")
+    .select("id, title, summary, content, post_type, is_published, approval_status, author_employee_id, author_name, published_at, created_at, updated_at")
     .order("updated_at", { ascending: false });
-  if (!includeDrafts) query = query.eq("is_published", true);
+  if (!includeDrafts) query = query.eq("approval_status", "published").eq("is_published", true);
   const { data: posts, error } = await query;
   if (error) throw error;
   const postIds = (posts || []).map((post) => post.id);
@@ -808,26 +974,13 @@ async function fetchCommunityPosts(includeDrafts = true, employeeId?: string | n
     .in("post_id", postIds.length ? postIds : ["__none__"]);
   if (likesError) throw likesError;
 
-  return (posts || []).map((post) => {
-    const postAssets = (assets || [])
-      .filter((asset) => asset.post_id === post.id)
-      .sort((a, b) => a.sort_order - b.sort_order)
-      .map((asset) => ({
-        id: asset.id,
-        postId: asset.post_id,
-        driveFileId: asset.drive_file_id,
-        fileName: asset.file_name,
-        mimeType: asset.mime_type,
-        assetType: asset.asset_type,
-        previewUrl: asset.preview_url,
-        thumbnailUrl: asset.thumbnail_url,
-        fileSize: asset.file_size,
-        sortOrder: asset.sort_order,
-        syncStatus: asset.sync_status,
-        metadata: asset.metadata,
-        createdAt: asset.created_at,
-        updatedAt: asset.updated_at,
-      }));
+  return await Promise.all((posts || []).map(async (post) => {
+    const postAssets = await Promise.all(
+      (assets || [])
+        .filter((asset) => asset.post_id === post.id)
+        .sort((a, b) => a.sort_order - b.sort_order)
+        .map((asset) => mapCommunityAsset(asset)),
+    );
     const postComments = (comments || [])
       .filter((comment) => comment.post_id === post.id)
       .map((comment) => ({
@@ -848,6 +1001,7 @@ async function fetchCommunityPosts(includeDrafts = true, employeeId?: string | n
       content: post.content,
       postType: post.post_type,
       isPublished: Boolean(post.is_published),
+      approvalStatus: normalizeApprovalStatus(post.approval_status || (post.is_published ? "published" : "draft")),
       authorEmployeeId: post.author_employee_id,
       authorName: post.author_name,
       publishedAt: post.published_at,
@@ -859,7 +1013,7 @@ async function fetchCommunityPosts(includeDrafts = true, employeeId?: string | n
       likedByMe: Boolean(employeeId && postLikes.some((like) => like.employee_id === employeeId)),
       commentCount: postComments.filter((comment) => !comment.isDeleted).length,
     };
-  });
+  }));
 }
 
 async function fetchGuides(includeDrafts = true) {
@@ -1029,6 +1183,65 @@ app.post("/make-server-a8898ff1/images/upload", async (c: any) => {
   }
 });
 
+app.post("/make-server-a8898ff1/community/assets/upload", async (c: any) => {
+  try {
+    const formData = await c.req.formData();
+    const file = formData.get("file");
+    const employeeId = canonicalizeEmployeeId(String(formData.get("employeeId") || ""));
+    const authorName = String(formData.get("name") || "").trim();
+    if (!(file instanceof File)) {
+      return c.json({ error: "파일이 필요합니다." }, 400);
+    }
+    const user = await assertKnownUser(employeeId, authorName);
+    if (!user) {
+      return c.json({ error: "로그인한 사용자 정보가 유효하지 않습니다." }, 403);
+    }
+    if (file.size > 50 * 1024 * 1024) {
+      return c.json({ error: "문서 파일은 50MB를 초과할 수 없습니다." }, 400);
+    }
+    const assetInfo = getCommunityAssetType(file);
+    if (!assetInfo) {
+      return c.json({ error: "PDF, PPT, PPTX, JPG, PNG, WEBP, GIF 파일만 업로드할 수 있습니다." }, 400);
+    }
+
+    const timestamp = Date.now();
+    const sanitizedFileName = sanitizeFileName(file.name);
+    const storagePath = `${employeeId}/${timestamp}_${sanitizedFileName}`;
+    const { error } = await supabase.storage.from(DOCUMENT_BUCKET).upload(storagePath, file, {
+      contentType: assetInfo.mimeType,
+      upsert: false,
+    });
+    if (error) {
+      return c.json({ error: error.message }, 500);
+    }
+
+    const signedUrl = await createSignedAssetUrl(storagePath);
+    const previewKind =
+      assetInfo.assetType === "image" ? "image-inline" : assetInfo.extension === "pdf" ? "pdf-inline" : "download-only";
+    return c.json({
+      success: true,
+      asset: {
+        fileName: file.name,
+        mimeType: assetInfo.mimeType,
+        assetType: assetInfo.assetType,
+        storagePath,
+        fileSize: file.size,
+        previewKind,
+        previewUrl: previewKind === "pdf-inline" || previewKind === "image-inline" ? signedUrl : null,
+        downloadUrl: signedUrl,
+        thumbnailUrl: previewKind === "image-inline" ? signedUrl : null,
+        syncStatus: "ready",
+        metadata: {
+          previewKind,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Document upload failed:", error);
+    return c.json({ error: "문서 업로드 중 오류가 발생했습니다." }, 500);
+  }
+});
+
 app.post("/make-server-a8898ff1/upload-video", async (c: any) => {
   try {
     const formData = await c.req.formData();
@@ -1174,6 +1387,129 @@ app.delete("/make-server-a8898ff1/admin/:id", async (c: any) => {
   } catch (error) {
     console.error("Delete admin error:", error);
     return c.json({ error: "관리자 삭제 중 오류가 발생했습니다." }, 500);
+  }
+});
+
+app.get("/make-server-a8898ff1/admin/authorized_employees", async (c: any) => {
+  try {
+    const search = String(c.req.query("search") || "");
+    return c.json({ employees: await listAuthorizedEmployees(search) });
+  } catch (error) {
+    console.error("Authorized employee list error:", error);
+    return c.json({ error: "로그인 허용 사용자 목록 조회 중 오류가 발생했습니다." }, 500);
+  }
+});
+
+app.post("/make-server-a8898ff1/admin/authorized_employees", async (c: any) => {
+  try {
+    const { employeeId, name } = await c.req.json();
+    const normalizedEmployeeId = canonicalizeEmployeeId(employeeId);
+    const displayName = String(name || "").trim();
+
+    if (normalizedEmployeeId.length !== 8) {
+      return c.json({ error: "사번은 8자리 숫자여야 합니다." }, 400);
+    }
+    if (!displayName) {
+      return c.json({ error: "이름을 입력해주세요." }, 400);
+    }
+
+    const existing = await getAuthorizedEmployeeByEmployeeId(normalizedEmployeeId);
+    if (existing?.is_active) {
+      return c.json({ error: "이미 등록된 로그인 허용 사용자입니다." }, 400);
+    }
+
+    const row = {
+      employee_id: normalizedEmployeeId,
+      name: displayName,
+      normalized_name: canonicalizeEmployeeName(displayName),
+      is_active: true,
+      created_at: existing?.created_at || NOW(),
+      updated_at: NOW(),
+    };
+
+    const { error } = await supabase.from("authorized_employees").upsert(row, { onConflict: "employee_id" });
+    if (error) throw error;
+
+    return c.json({ success: true, employee: mapAuthorizedEmployee(row) });
+  } catch (error) {
+    console.error("Create authorized employee error:", error);
+    return c.json({ error: "로그인 허용 사용자 등록 중 오류가 발생했습니다." }, 500);
+  }
+});
+
+app.put("/make-server-a8898ff1/admin/authorized_employees/:employeeId", async (c: any) => {
+  try {
+    const currentEmployeeId = canonicalizeEmployeeId(c.req.param("employeeId"));
+    const { employeeId, name } = await c.req.json();
+    const nextEmployeeId = canonicalizeEmployeeId(employeeId || currentEmployeeId);
+    const displayName = String(name || "").trim();
+
+    if (nextEmployeeId.length !== 8) {
+      return c.json({ error: "사번은 8자리 숫자여야 합니다." }, 400);
+    }
+    if (!displayName) {
+      return c.json({ error: "이름을 입력해주세요." }, 400);
+    }
+
+    const existing = await getAuthorizedEmployeeByEmployeeId(currentEmployeeId);
+    if (!existing || !existing.is_active) {
+      return c.json({ error: "로그인 허용 사용자를 찾을 수 없습니다." }, 404);
+    }
+
+    if (currentEmployeeId !== nextEmployeeId) {
+      const duplicate = await getAuthorizedEmployeeByEmployeeId(nextEmployeeId);
+      if (duplicate?.is_active) {
+        return c.json({ error: "변경할 사번이 이미 등록되어 있습니다." }, 400);
+      }
+    }
+
+    const updateRow = {
+      employee_id: nextEmployeeId,
+      name: displayName,
+      normalized_name: canonicalizeEmployeeName(displayName),
+      is_active: true,
+      created_at: existing.created_at,
+      updated_at: NOW(),
+    };
+
+    const { error } = await supabase
+      .from("authorized_employees")
+      .upsert(updateRow, { onConflict: "employee_id" });
+    if (error) throw error;
+
+    if (currentEmployeeId !== nextEmployeeId) {
+      const { error: deactivateError } = await supabase
+        .from("authorized_employees")
+        .update({ is_active: false, updated_at: NOW() })
+        .eq("employee_id", currentEmployeeId);
+      if (deactivateError) throw deactivateError;
+    }
+
+    return c.json({ success: true, employee: mapAuthorizedEmployee(updateRow) });
+  } catch (error) {
+    console.error("Update authorized employee error:", error);
+    return c.json({ error: "로그인 허용 사용자 수정 중 오류가 발생했습니다." }, 500);
+  }
+});
+
+app.delete("/make-server-a8898ff1/admin/authorized_employees/:employeeId", async (c: any) => {
+  try {
+    const employeeId = canonicalizeEmployeeId(c.req.param("employeeId"));
+    const existing = await getAuthorizedEmployeeByEmployeeId(employeeId);
+    if (!existing || !existing.is_active) {
+      return c.json({ error: "로그인 허용 사용자를 찾을 수 없습니다." }, 404);
+    }
+
+    const { error } = await supabase
+      .from("authorized_employees")
+      .update({ is_active: false, updated_at: NOW() })
+      .eq("employee_id", employeeId);
+    if (error) throw error;
+
+    return c.json({ success: true });
+  } catch (error) {
+    console.error("Delete authorized employee error:", error);
+    return c.json({ error: "로그인 허용 사용자 삭제 중 오류가 발생했습니다." }, 500);
   }
 });
 
@@ -1682,19 +2018,50 @@ app.get("/make-server-a8898ff1/community/posts", async (c: any) => {
   }
 });
 
+function buildCommunityAssetRows(postId: string, assets: any[]) {
+  return assets.map((asset: any, index: number) => {
+    const previewKind =
+      asset.previewKind ||
+      asset.metadata?.previewKind ||
+      (asset.assetType === "image" ? "image-inline" : asset.mimeType?.includes("pdf") ? "pdf-inline" : "download-only");
+    return {
+      id: asset.id || makeId("asset"),
+      post_id: postId,
+      drive_file_id: null,
+      storage_path: asset.storagePath || null,
+      file_name: asset.fileName || `asset-${index + 1}`,
+      mime_type: asset.mimeType || null,
+      asset_type: asset.assetType || "document",
+      preview_url: asset.previewUrl || null,
+      thumbnail_url: asset.thumbnailUrl || null,
+      file_size: asset.fileSize || null,
+      sort_order: typeof asset.sortOrder === "number" ? asset.sortOrder : index,
+      sync_status: asset.syncStatus || "ready",
+      metadata: {
+        ...(asset.metadata || {}),
+        previewKind,
+      },
+      created_at: NOW(),
+      updated_at: NOW(),
+    };
+  });
+}
+
 app.post("/make-server-a8898ff1/community/posts", async (c: any) => {
   try {
     const body = await c.req.json();
+    const approvalStatus = Boolean(body.isPublished) ? "published" : normalizeApprovalStatus(body.approvalStatus);
     const row = {
       id: makeId("post"),
       title: String(body.title || "").trim(),
       summary: body.summary || null,
       content: body.content || null,
       post_type: body.postType || "notice",
-      is_published: Boolean(body.isPublished),
+      is_published: approvalStatus === "published",
+      approval_status: approvalStatus,
       author_employee_id: body.authorEmployeeId || null,
       author_name: body.authorName || null,
-      published_at: body.isPublished ? NOW() : null,
+      published_at: approvalStatus === "published" ? NOW() : null,
       created_at: NOW(),
       updated_at: NOW(),
     };
@@ -1702,22 +2069,7 @@ app.post("/make-server-a8898ff1/community/posts", async (c: any) => {
     if (error) throw error;
     const assets = Array.isArray(body.assets) ? body.assets : [];
     if (assets.length > 0) {
-      const assetRows = assets.map((asset: any, index: number) => ({
-        id: makeId("asset"),
-        post_id: row.id,
-        drive_file_id: asset.driveFileId || null,
-        file_name: asset.fileName || `asset-${index + 1}`,
-        mime_type: asset.mimeType || null,
-        asset_type: asset.assetType || "document",
-        preview_url: asset.previewUrl || null,
-        thumbnail_url: asset.thumbnailUrl || null,
-        file_size: asset.fileSize || null,
-        sort_order: typeof asset.sortOrder === "number" ? asset.sortOrder : index,
-        sync_status: asset.syncStatus || "ready",
-        metadata: asset.metadata || {},
-        created_at: NOW(),
-        updated_at: NOW(),
-      }));
+      const assetRows = buildCommunityAssetRows(row.id, assets);
       const { error: assetError } = await supabase.from("community_assets").insert(assetRows);
       if (assetError) throw assetError;
     }
@@ -1746,6 +2098,7 @@ app.put("/make-server-a8898ff1/community/posts/:postId", async (c: any) => {
   try {
     const postId = c.req.param("postId");
     const body = await c.req.json();
+    const approvalStatus = Boolean(body.isPublished) ? "published" : normalizeApprovalStatus(body.approvalStatus);
     const { error } = await supabase
       .from("community_posts")
       .update({
@@ -1753,8 +2106,9 @@ app.put("/make-server-a8898ff1/community/posts/:postId", async (c: any) => {
         summary: body.summary || null,
         content: body.content || null,
         post_type: body.postType || "notice",
-        is_published: Boolean(body.isPublished),
-        published_at: body.isPublished ? NOW() : null,
+        is_published: approvalStatus === "published",
+        approval_status: approvalStatus,
+        published_at: approvalStatus === "published" ? NOW() : null,
         updated_at: NOW(),
       })
       .eq("id", postId);
@@ -1762,21 +2116,7 @@ app.put("/make-server-a8898ff1/community/posts/:postId", async (c: any) => {
     if (Array.isArray(body.assets)) {
       await supabase.from("community_assets").delete().eq("post_id", postId);
       if (body.assets.length > 0) {
-        const assetRows = body.assets.map((asset: any, index: number) => ({
-          id: asset.id || makeId("asset"),
-          post_id: postId,
-          drive_file_id: asset.driveFileId || null,
-          file_name: asset.fileName || `asset-${index + 1}`,
-          mime_type: asset.mimeType || null,
-          asset_type: asset.assetType || "document",
-          preview_url: asset.previewUrl || null,
-          thumbnail_url: asset.thumbnailUrl || null,
-          file_size: asset.fileSize || null,
-          sort_order: typeof asset.sortOrder === "number" ? asset.sortOrder : index,
-          sync_status: asset.syncStatus || "ready",
-          metadata: asset.metadata || {},
-          updated_at: NOW(),
-        }));
+        const assetRows = buildCommunityAssetRows(postId, body.assets);
         const { error: assetError } = await supabase.from("community_assets").insert(assetRows);
         if (assetError) throw assetError;
       }
@@ -1786,6 +2126,75 @@ app.put("/make-server-a8898ff1/community/posts/:postId", async (c: any) => {
   } catch (error) {
     console.error("Update community post error:", error);
     return c.json({ error: "게시물 수정 중 오류가 발생했습니다." }, 500);
+  }
+});
+
+app.post("/make-server-a8898ff1/community/posts/submit", async (c: any) => {
+  try {
+    const body = await c.req.json();
+    const employeeId = canonicalizeEmployeeId(body.authorEmployeeId);
+    const authorName = String(body.authorName || "").trim();
+    const user = await assertKnownUser(employeeId, authorName);
+    if (!user) {
+      return c.json({ error: "로그인한 사용자만 게시물을 제출할 수 있습니다." }, 403);
+    }
+
+    const row = {
+      id: makeId("post"),
+      title: String(body.title || "").trim(),
+      summary: body.summary || null,
+      content: body.content || null,
+      post_type: body.postType || "document",
+      is_published: false,
+      approval_status: "pending_review",
+      author_employee_id: user.employeeId,
+      author_name: user.name,
+      published_at: null,
+      created_at: NOW(),
+      updated_at: NOW(),
+    };
+    const { error } = await supabase.from("community_posts").insert(row);
+    if (error) throw error;
+
+    const assets = Array.isArray(body.assets) ? body.assets : [];
+    if (assets.length > 0) {
+      const assetRows = buildCommunityAssetRows(row.id, assets);
+      const { error: assetError } = await supabase.from("community_assets").insert(assetRows);
+      if (assetError) throw assetError;
+    }
+
+    const posts = await fetchCommunityPosts(true, user.employeeId);
+    return c.json({ success: true, post: posts.find((post) => post.id === row.id) });
+  } catch (error) {
+    console.error("Submit community post error:", error);
+    return c.json({ error: "게시물 제출 중 오류가 발생했습니다." }, 500);
+  }
+});
+
+app.post("/make-server-a8898ff1/community/posts/:postId/review", async (c: any) => {
+  try {
+    const postId = c.req.param("postId");
+    const body = await c.req.json();
+    const action = String(body.action || "").trim();
+    const nextStatus = action === "approve" ? "published" : action === "reject" ? "rejected" : "";
+    if (!nextStatus) {
+      return c.json({ error: "승인 또는 반려 액션이 필요합니다." }, 400);
+    }
+
+    const updateRow = {
+      approval_status: nextStatus,
+      is_published: nextStatus === "published",
+      published_at: nextStatus === "published" ? NOW() : null,
+      updated_at: NOW(),
+    };
+    const { error } = await supabase.from("community_posts").update(updateRow).eq("id", postId);
+    if (error) throw error;
+
+    const posts = await fetchCommunityPosts(true);
+    return c.json({ success: true, post: posts.find((post) => post.id === postId) });
+  } catch (error) {
+    console.error("Review community post error:", error);
+    return c.json({ error: "게시물 승인 처리 중 오류가 발생했습니다." }, 500);
   }
 });
 
@@ -1804,25 +2213,11 @@ app.post("/make-server-a8898ff1/community/posts/:postId/assets", async (c: any) 
   try {
     const postId = c.req.param("postId");
     const body = await c.req.json();
-    const row = {
-      id: makeId("asset"),
-      post_id: postId,
-      drive_file_id: body.driveFileId || null,
-      file_name: body.fileName || "untitled",
-      mime_type: body.mimeType || null,
-      asset_type: body.assetType || "document",
-      preview_url: body.previewUrl || null,
-      thumbnail_url: body.thumbnailUrl || null,
-      file_size: body.fileSize || null,
-      sort_order: body.sortOrder || 0,
-      sync_status: body.syncStatus || "ready",
-      metadata: body.metadata || {},
-      created_at: NOW(),
-      updated_at: NOW(),
-    };
+    const row = buildCommunityAssetRows(postId, [body])[0];
     const { error } = await supabase.from("community_assets").insert(row);
     if (error) throw error;
-    return c.json({ success: true, asset: row });
+    const assets = await Promise.all([mapCommunityAsset(row)]);
+    return c.json({ success: true, asset: assets[0] });
   } catch (error) {
     console.error("Create asset error:", error);
     return c.json({ error: "첨부 자산 저장 중 오류가 발생했습니다." }, 500);
@@ -2085,66 +2480,6 @@ app.delete("/make-server-a8898ff1/guide-sections/:sectionId", async (c: any) => 
   } catch (error) {
     console.error("Delete guide section error:", error);
     return c.json({ error: "섹션 삭제 중 오류가 발생했습니다." }, 500);
-  }
-});
-
-app.get("/make-server-a8898ff1/admin/integrations/google-drive", async (c: any) => {
-  try {
-    const setting = await getSetting("google_drive", {
-      enabled: false,
-      folderId: "",
-      allowedMimeTypes: ["application/pdf", "image/png", "image/jpeg", "video/mp4"],
-      maxFileSizeMb: 100,
-      previewMode: "restricted",
-      credentialConfigured: Boolean(Deno.env.get("GOOGLE_SERVICE_ACCOUNT_EMAIL") && Deno.env.get("GOOGLE_PRIVATE_KEY")),
-      lastValidatedAt: null,
-      lastError: null,
-    });
-    return c.json(setting);
-  } catch (error) {
-    console.error("Get Google Drive settings error:", error);
-    return c.json({ error: "Google Drive 설정 조회 중 오류가 발생했습니다." }, 500);
-  }
-});
-
-app.put("/make-server-a8898ff1/admin/integrations/google-drive", async (c: any) => {
-  try {
-    const body = await c.req.json();
-    const nextValue = {
-      enabled: Boolean(body.enabled),
-      folderId: String(body.folderId || "").trim(),
-      allowedMimeTypes: Array.isArray(body.allowedMimeTypes) ? body.allowedMimeTypes : ["application/pdf", "image/png", "image/jpeg", "video/mp4"],
-      maxFileSizeMb: Number(body.maxFileSizeMb || 100),
-      previewMode: body.previewMode || "restricted",
-      credentialConfigured: Boolean(Deno.env.get("GOOGLE_SERVICE_ACCOUNT_EMAIL") && Deno.env.get("GOOGLE_PRIVATE_KEY")),
-      lastValidatedAt: body.lastValidatedAt || null,
-      lastError: body.lastError || null,
-    };
-    await upsertSetting("google_drive", nextValue);
-    return c.json({ success: true, value: nextValue });
-  } catch (error) {
-    console.error("Update Google Drive settings error:", error);
-    return c.json({ error: "Google Drive 설정 저장 중 오류가 발생했습니다." }, 500);
-  }
-});
-
-app.post("/make-server-a8898ff1/admin/integrations/google-drive/validate", async (c: any) => {
-  try {
-    const current = await getSetting("google_drive", {});
-    const credentialConfigured = Boolean(Deno.env.get("GOOGLE_SERVICE_ACCOUNT_EMAIL") && Deno.env.get("GOOGLE_PRIVATE_KEY"));
-    const folderId = String(current.value.folderId || "").trim();
-    const success = credentialConfigured && Boolean(folderId);
-    const nextValue = {
-      ...current.value,
-      credentialConfigured,
-      lastValidatedAt: NOW(),
-      lastError: success ? null : "서비스 계정 자격 증명 또는 폴더 ID가 설정되지 않았습니다.",
-    };
-    await upsertSetting("google_drive", nextValue);
-    return c.json({ success, value: nextValue });
-  } catch (error) {
-    console.error("Validate Google Drive settings error:", error);
-    return c.json({ error: "Google Drive 설정 검증 중 오류가 발생했습니다." }, 500);
   }
 });
 
