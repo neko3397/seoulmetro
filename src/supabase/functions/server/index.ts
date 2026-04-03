@@ -115,9 +115,29 @@ const defaultGuide = {
   title: "신입사원 기본 가이드",
   description: "신입사원이 알아야 할 운영 규정과 업무 흐름입니다.",
   slug: "new-hire-onboarding",
+  category_id: "doc_onboarding",
   is_published: true,
   version: 1,
 };
+
+const defaultGuideCategories = [
+  {
+    id: "doc_onboarding",
+    title: "신입 교육 문서",
+    subtitle: "온보딩과 기본 운영 절차",
+    image:
+      "https://images.unsplash.com/photo-1450101499163-c8848c66ca85?w=400&h=300&fit=crop",
+    description: "신입 승무원이 먼저 확인해야 하는 기본 문서를 관리합니다.",
+  },
+  {
+    id: "doc_operations",
+    title: "업무 매뉴얼",
+    subtitle: "현장 운영과 표준 절차",
+    image:
+      "https://images.unsplash.com/photo-1520607162513-77705c0f0d4a?w=400&h=300&fit=crop",
+    description: "운영 기준, 절차, 점검 관련 문서를 분류합니다.",
+  },
+];
 
 const defaultGuideSections = [
   {
@@ -380,6 +400,21 @@ async function ensureDefaultEducationData() {
 }
 
 async function ensureDefaultGuideAndCommunity() {
+  const { data: guideCategories, error: guideCategoryError } = await supabase
+    .from("guide_categories")
+    .select("id")
+    .limit(1);
+  if (guideCategoryError) throw guideCategoryError;
+  if ((guideCategories || []).length === 0) {
+    const rows = defaultGuideCategories.map((category) => ({
+      ...category,
+      created_at: NOW(),
+      updated_at: NOW(),
+    }));
+    const { error } = await supabase.from("guide_categories").upsert(rows, { onConflict: "id" });
+    if (error) throw error;
+  }
+
   const { data: guides, error: guideError } = await supabase.from("guides").select("id").limit(1);
   if (guideError) throw guideError;
   if ((guides || []).length === 0) {
@@ -387,6 +422,12 @@ async function ensureDefaultGuideAndCommunity() {
     if (error) throw error;
     const { error: sectionError } = await supabase.from("guide_sections").insert(defaultGuideSections);
     if (sectionError) throw sectionError;
+  } else {
+    const { error: backfillError } = await supabase
+      .from("guides")
+      .update({ category_id: defaultGuideCategories[0].id })
+      .is("category_id", null);
+    if (backfillError) throw backfillError;
   }
 
   const { data: posts, error: postError } = await supabase.from("community_posts").select("id").limit(1);
@@ -429,6 +470,18 @@ function mapAuthorizedEmployee(row: any) {
 }
 
 function mapCategory(row: any) {
+  return {
+    id: row.id,
+    title: row.title,
+    subtitle: row.subtitle,
+    image: row.image,
+    description: row.description,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapGuideCategory(row: any) {
   return {
     id: row.id,
     title: row.title,
@@ -570,6 +623,15 @@ async function listVideos(categoryId: string) {
     .order("created_at", { ascending: true });
   if (error) throw error;
   return (data || []).map(mapVideo);
+}
+
+async function listGuideCategories() {
+  const { data, error } = await supabase
+    .from("guide_categories")
+    .select("id, title, subtitle, image, description, created_at, updated_at")
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data || []).map(mapGuideCategory);
 }
 
 async function listAllVideos() {
@@ -952,7 +1014,7 @@ async function logChatQuery(question: string, answer: string, status: string, mo
 async function fetchCommunityPosts(includeDrafts = true, employeeId?: string | null) {
   let query = supabase
     .from("community_posts")
-    .select("id, title, summary, content, post_type, is_published, approval_status, author_employee_id, author_name, published_at, created_at, updated_at")
+    .select("id, title, summary, content, post_type, is_published, approval_status, author_employee_id, author_name, published_at, metadata, created_at, updated_at")
     .order("updated_at", { ascending: false });
   if (!includeDrafts) query = query.eq("approval_status", "published").eq("is_published", true);
   const { data: posts, error } = await query;
@@ -1012,14 +1074,17 @@ async function fetchCommunityPosts(includeDrafts = true, employeeId?: string | n
       likeCount: postLikes.length,
       likedByMe: Boolean(employeeId && postLikes.some((like) => like.employee_id === employeeId)),
       commentCount: postComments.filter((comment) => !comment.isDeleted).length,
+      metadata: post.metadata || {},
     };
   }));
 }
 
 async function fetchGuides(includeDrafts = true) {
+  const guideCategories = await listGuideCategories();
+  const guideCategoryMap = new Map(guideCategories.map((category) => [category.id, category]));
   let query = supabase
     .from("guides")
-    .select("id, title, description, slug, is_published, version, created_at, updated_at")
+    .select("id, category_id, title, description, slug, is_published, version, created_at, updated_at")
     .order("updated_at", { ascending: false });
   if (!includeDrafts) query = query.eq("is_published", true);
   const { data: guides, error } = await query;
@@ -1033,6 +1098,8 @@ async function fetchGuides(includeDrafts = true) {
   if (sectionError) throw sectionError;
   return (guides || []).map((guide) => ({
     id: guide.id,
+    categoryId: guide.category_id,
+    category: guide.category_id ? guideCategoryMap.get(guide.category_id) || null : null,
     title: guide.title,
     description: guide.description,
     slug: guide.slug,
@@ -2051,6 +2118,7 @@ app.post("/make-server-a8898ff1/community/posts", async (c: any) => {
   try {
     const body = await c.req.json();
     const approvalStatus = Boolean(body.isPublished) ? "published" : normalizeApprovalStatus(body.approvalStatus);
+    const metadata = body.metadata && typeof body.metadata === "object" ? body.metadata : {};
     const row = {
       id: makeId("post"),
       title: String(body.title || "").trim(),
@@ -2061,6 +2129,7 @@ app.post("/make-server-a8898ff1/community/posts", async (c: any) => {
       approval_status: approvalStatus,
       author_employee_id: body.authorEmployeeId || null,
       author_name: body.authorName || null,
+      metadata,
       published_at: approvalStatus === "published" ? NOW() : null,
       created_at: NOW(),
       updated_at: NOW(),
@@ -2099,6 +2168,7 @@ app.put("/make-server-a8898ff1/community/posts/:postId", async (c: any) => {
     const postId = c.req.param("postId");
     const body = await c.req.json();
     const approvalStatus = Boolean(body.isPublished) ? "published" : normalizeApprovalStatus(body.approvalStatus);
+    const metadata = body.metadata && typeof body.metadata === "object" ? body.metadata : {};
     const { error } = await supabase
       .from("community_posts")
       .update({
@@ -2108,6 +2178,7 @@ app.put("/make-server-a8898ff1/community/posts/:postId", async (c: any) => {
         post_type: body.postType || "notice",
         is_published: approvalStatus === "published",
         approval_status: approvalStatus,
+        metadata,
         published_at: approvalStatus === "published" ? NOW() : null,
         updated_at: NOW(),
       })
@@ -2139,6 +2210,7 @@ app.post("/make-server-a8898ff1/community/posts/submit", async (c: any) => {
       return c.json({ error: "로그인한 사용자만 게시물을 제출할 수 있습니다." }, 403);
     }
 
+    const metadata = body.metadata && typeof body.metadata === "object" ? body.metadata : {};
     const row = {
       id: makeId("post"),
       title: String(body.title || "").trim(),
@@ -2149,6 +2221,7 @@ app.post("/make-server-a8898ff1/community/posts/submit", async (c: any) => {
       approval_status: "pending_review",
       author_employee_id: user.employeeId,
       author_name: user.name,
+      metadata,
       published_at: null,
       created_at: NOW(),
       updated_at: NOW(),
@@ -2358,11 +2431,88 @@ app.get("/make-server-a8898ff1/guides", async (c: any) => {
   }
 });
 
+app.get("/make-server-a8898ff1/document-categories", async (c: any) => {
+  try {
+    return c.json({ categories: await listGuideCategories() });
+  } catch (error) {
+    console.error("List document categories error:", error);
+    return c.json({ error: "문서 카테고리 조회 중 오류가 발생했습니다." }, 500);
+  }
+});
+
+app.post("/make-server-a8898ff1/document-categories", async (c: any) => {
+  try {
+    const { title, subtitle, image, description } = await c.req.json();
+    const row = {
+      id: makeId("doccat"),
+      title: String(title || "").trim(),
+      subtitle: subtitle || null,
+      image: image || null,
+      description: description || null,
+      created_at: NOW(),
+      updated_at: NOW(),
+    };
+    const { error } = await supabase.from("guide_categories").insert(row);
+    if (error) throw error;
+    return c.json({ success: true, category: mapGuideCategory(row) });
+  } catch (error) {
+    console.error("Create document category error:", error);
+    return c.json({ error: "문서 카테고리 생성 중 오류가 발생했습니다." }, 500);
+  }
+});
+
+app.put("/make-server-a8898ff1/document-categories/:categoryId", async (c: any) => {
+  try {
+    const categoryId = c.req.param("categoryId");
+    const { title, subtitle, image, description } = await c.req.json();
+    const { error } = await supabase
+      .from("guide_categories")
+      .update({
+        title: String(title || "").trim(),
+        subtitle: subtitle || null,
+        image: image || null,
+        description: description || null,
+        updated_at: NOW(),
+      })
+      .eq("id", categoryId);
+    if (error) throw error;
+    const categories = await listGuideCategories();
+    return c.json({ success: true, category: categories.find((category) => category.id === categoryId) });
+  } catch (error) {
+    console.error("Update document category error:", error);
+    return c.json({ error: "문서 카테고리 수정 중 오류가 발생했습니다." }, 500);
+  }
+});
+
+app.delete("/make-server-a8898ff1/document-categories/:categoryId", async (c: any) => {
+  try {
+    const categoryId = c.req.param("categoryId");
+    const { data: guidesInCategory, error: guideError } = await supabase
+      .from("guides")
+      .select("id")
+      .eq("category_id", categoryId)
+      .limit(1);
+    if (guideError) throw guideError;
+    if ((guidesInCategory || []).length > 0) {
+      return c.json({ error: "문서가 포함된 카테고리는 삭제할 수 없습니다." }, 400);
+    }
+    const { error } = await supabase.from("guide_categories").delete().eq("id", categoryId);
+    if (error) throw error;
+    return c.json({ success: true });
+  } catch (error) {
+    console.error("Delete document category error:", error);
+    return c.json({ error: "문서 카테고리 삭제 중 오류가 발생했습니다." }, 500);
+  }
+});
+
 app.post("/make-server-a8898ff1/guides", async (c: any) => {
   try {
     const body = await c.req.json();
+    const categories = await listGuideCategories();
+    const categoryId = body.categoryId || categories[0]?.id || null;
     const row = {
       id: makeId("guide"),
+      category_id: categoryId,
       title: String(body.title || "").trim(),
       description: body.description || null,
       slug: slugify(body.slug || body.title),
@@ -2395,9 +2545,12 @@ app.put("/make-server-a8898ff1/guides/:guideId", async (c: any) => {
   try {
     const body = await c.req.json();
     const guideId = c.req.param("guideId");
+    const categories = await listGuideCategories();
+    const categoryId = body.categoryId || categories[0]?.id || null;
     const { error } = await supabase
       .from("guides")
       .update({
+        category_id: categoryId,
         title: String(body.title || "").trim(),
         description: body.description || null,
         slug: slugify(body.slug || body.title),

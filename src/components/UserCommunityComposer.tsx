@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Textarea } from "./ui/textarea";
 import { Alert, AlertDescription } from "./ui/alert";
-import { apiRequest } from "../lib/api";
+import { apiRequest, apiRequestJson } from "../lib/api";
 
 const COMMUNITY_UPLOAD_ACCEPT =
   ".pdf,.ppt,.pptx,.jpg,.jpeg,.png,.webp,.gif,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,image/jpeg,image/png,image/webp,image/gif";
@@ -31,14 +32,35 @@ const emptyForm = {
   title: "",
   summary: "",
   content: "",
+  postType: "notice",
+  documentCategoryId: "",
   assets: [] as any[],
 };
 
 export function UserCommunityComposer({ currentUser, onSubmitted, onClose }: UserCommunityComposerProps) {
   const [form, setForm] = useState(emptyForm);
+  const [documentCategories, setDocumentCategories] = useState<any[]>([]);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+
+  useEffect(() => {
+    const loadDocumentCategories = async () => {
+      try {
+        const data = await apiRequestJson<{ categories?: any[] }>("/document-categories");
+        const nextCategories = data.categories || [];
+        setDocumentCategories(nextCategories);
+        setForm((prev) => ({
+          ...prev,
+          documentCategoryId: prev.documentCategoryId || nextCategories[0]?.id || "",
+        }));
+      } catch (error) {
+        console.error("Failed to load document categories:", error);
+      }
+    };
+
+    void loadDocumentCategories();
+  }, []);
 
   const uploadDocument = async (file: File) => {
     if (!currentUser?.employeeId || !currentUser?.name) return;
@@ -89,8 +111,15 @@ export function UserCommunityComposer({ currentUser, onSubmitted, onClose }: Use
           title: form.title,
           summary: form.summary,
           content: form.content,
+          postType: form.postType,
           authorEmployeeId: currentUser.employeeId,
           authorName: currentUser.name,
+          metadata:
+            form.postType === "document"
+              ? {
+                  documentCategoryId: form.documentCategoryId || null,
+                }
+              : {},
           assets: form.assets,
         }),
       });
@@ -130,6 +159,48 @@ export function UserCommunityComposer({ currentUser, onSubmitted, onClose }: Use
           <Alert>
             <AlertDescription>{message}</AlertDescription>
           </Alert>
+        ) : null}
+        <div>
+          <Label htmlFor="user-post-type">게시물 유형</Label>
+          <Select
+            value={form.postType}
+            onValueChange={(value) =>
+              setForm((prev) => ({
+                ...prev,
+                postType: value,
+                documentCategoryId:
+                  value === "document" ? prev.documentCategoryId || documentCategories[0]?.id || "" : "",
+              }))
+            }
+          >
+            <SelectTrigger id="user-post-type" className="mt-2">
+              <SelectValue placeholder="게시물 유형을 선택하세요" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="notice">업무공지</SelectItem>
+              <SelectItem value="document">문서</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {form.postType === "document" ? (
+          <div>
+            <Label htmlFor="user-post-document-category">문서 하위 카테고리</Label>
+            <Select
+              value={form.documentCategoryId}
+              onValueChange={(value) => setForm((prev) => ({ ...prev, documentCategoryId: value }))}
+            >
+              <SelectTrigger id="user-post-document-category" className="mt-2">
+                <SelectValue placeholder="문서 카테고리를 선택하세요" />
+              </SelectTrigger>
+              <SelectContent>
+                {documentCategories.map((category) => (
+                  <SelectItem key={category.id} value={category.id}>
+                    {category.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         ) : null}
         <div>
           <Label htmlFor="user-post-title">제목</Label>
@@ -221,7 +292,15 @@ export function UserCommunityComposer({ currentUser, onSubmitted, onClose }: Use
           <Button variant="outline" onClick={onClose} disabled={saving || uploading}>
             닫기
           </Button>
-          <Button onClick={() => void submitPost()} disabled={saving || uploading || !form.title.trim()}>
+          <Button
+            onClick={() => void submitPost()}
+            disabled={
+              saving ||
+              uploading ||
+              !form.title.trim() ||
+              (form.postType === "document" && !form.documentCategoryId)
+            }
+          >
             {saving ? "제출 중..." : "승인 요청"}
           </Button>
         </div>

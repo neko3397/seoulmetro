@@ -57,6 +57,7 @@ export interface CommunityPost {
   likeCount: number;
   likedByMe: boolean;
   commentCount: number;
+  metadata?: Record<string, unknown>;
 }
 
 export interface GuideSection {
@@ -72,8 +73,20 @@ export interface GuideSection {
   updatedAt: string;
 }
 
+export interface GuideCategory {
+  id: string;
+  title: string;
+  subtitle?: string | null;
+  image?: string | null;
+  description?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface GuideDetail {
   id: string;
+  categoryId?: string | null;
+  category?: GuideCategory | null;
   title: string;
   description?: string | null;
   slug: string;

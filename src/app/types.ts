@@ -1,4 +1,4 @@
-import { CommunityPost, FeedItem, GuideDetail } from "../types/content";
+import { CommunityPost, FeedItem, GuideCategory, GuideDetail } from "../types/content";
 import { Video } from "../types/video";
 
 export interface Category {
@@ -15,6 +15,7 @@ export type ViewState =
   | "videoList"
   | "videoDetail"
   | "wikiDocs"
+  | "wikiList"
   | "wikiDetail"
   | "communityPostDetail"
   | "personalizedEducation"
@@ -40,6 +41,7 @@ export interface NavigateOptions {
 export interface AppShellCache {
   categories: Category[];
   videosByCategory: Record<string, Video[]>;
+  guideCategories: GuideCategory[];
   guides: GuideDetail[];
   feedItems: FeedItem[];
 }

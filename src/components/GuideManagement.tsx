@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Textarea } from "./ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { apiRequest } from "../lib/api";
@@ -14,6 +15,7 @@ interface GuideManagementProps {
 
 const emptyGuide = {
   id: "",
+  categoryId: "",
   title: "",
   description: "",
   slug: "",
@@ -33,6 +35,7 @@ const emptySection = {
 };
 
 export function GuideManagement({ onUpdated }: GuideManagementProps) {
+  const [categories, setCategories] = useState<any[]>([]);
   const [guides, setGuides] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedGuideId, setSelectedGuideId] = useState("");
@@ -47,15 +50,21 @@ export function GuideManagement({ onUpdated }: GuideManagementProps) {
   const load = async () => {
     try {
       setLoading(true);
-      const response = await apiRequest("/guides?includeDrafts=true");
-      const data = await response.json();
-      const nextGuides = data.guides || [];
+      const [guideResponse, categoryResponse] = await Promise.all([
+        apiRequest("/guides?includeDrafts=true"),
+        apiRequest("/document-categories"),
+      ]);
+      const [guideData, categoryData] = await Promise.all([guideResponse.json(), categoryResponse.json()]);
+      const nextGuides = guideData.guides || [];
+      const nextCategories = categoryData.categories || [];
+      setCategories(nextCategories);
       setGuides(nextGuides);
       if (nextGuides.length > 0) {
         const activeGuide = nextGuides.find((guide: any) => guide.id === selectedGuideId) || nextGuides[0];
         setSelectedGuideId(activeGuide.id);
         setGuideForm({
           id: activeGuide.id,
+          categoryId: activeGuide.categoryId || nextCategories[0]?.id || "",
           title: activeGuide.title,
           description: activeGuide.description || "",
           slug: activeGuide.slug,
@@ -65,7 +74,10 @@ export function GuideManagement({ onUpdated }: GuideManagementProps) {
         });
       } else {
         setSelectedGuideId("");
-        setGuideForm(emptyGuide);
+        setGuideForm({
+          ...emptyGuide,
+          categoryId: nextCategories[0]?.id || "",
+        });
       }
     } catch (error) {
       console.error("Failed to load guides:", error);
@@ -82,6 +94,7 @@ export function GuideManagement({ onUpdated }: GuideManagementProps) {
     if (selectedGuide) {
       setGuideForm({
         id: selectedGuide.id,
+        categoryId: selectedGuide.categoryId || categories[0]?.id || "",
         title: selectedGuide.title,
         description: selectedGuide.description || "",
         slug: selectedGuide.slug,
@@ -90,7 +103,7 @@ export function GuideManagement({ onUpdated }: GuideManagementProps) {
         sections: selectedGuide.sections || [],
       });
     }
-  }, [selectedGuide]);
+  }, [categories, selectedGuide]);
 
   const handleSaveGuide = async () => {
     try {
@@ -102,6 +115,7 @@ export function GuideManagement({ onUpdated }: GuideManagementProps) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          categoryId: guideForm.categoryId || categories[0]?.id || null,
           title: guideForm.title,
           description: guideForm.description,
           slug: guideForm.slug,
@@ -220,7 +234,10 @@ export function GuideManagement({ onUpdated }: GuideManagementProps) {
                 variant="outline"
                 onClick={() => {
                   setSelectedGuideId("");
-                  setGuideForm(emptyGuide);
+                  setGuideForm({
+                    ...emptyGuide,
+                    categoryId: categories[0]?.id || "",
+                  });
                 }}
               >
                 새 가이드북
@@ -230,6 +247,7 @@ export function GuideManagement({ onUpdated }: GuideManagementProps) {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>카테고리</TableHead>
                   <TableHead>제목</TableHead>
                   <TableHead>공개</TableHead>
                   <TableHead>섹션 수</TableHead>
@@ -242,6 +260,7 @@ export function GuideManagement({ onUpdated }: GuideManagementProps) {
                     key={guide.id}
                     className={guide.id === selectedGuideId ? "bg-muted/50" : undefined}
                   >
+                    <TableCell>{guide.category?.title || "-"}</TableCell>
                     <TableCell className="font-medium">{guide.title}</TableCell>
                     <TableCell>{guide.isPublished ? "공개" : "비공개"}</TableCell>
                     <TableCell>{guide.sectionCount}</TableCell>
@@ -267,6 +286,24 @@ export function GuideManagement({ onUpdated }: GuideManagementProps) {
             <CardTitle>{guideForm.id ? "가이드북 수정" : "가이드북 생성"}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div>
+              <Label htmlFor="guide-category">문서 카테고리</Label>
+              <Select
+                value={guideForm.categoryId || categories[0]?.id || ""}
+                onValueChange={(value) => setGuideForm((prev) => ({ ...prev, categoryId: value }))}
+              >
+                <SelectTrigger id="guide-category">
+                  <SelectValue placeholder="문서 카테고리를 선택하세요" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      {category.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div>
               <Label htmlFor="guide-title">제목</Label>
               <Input

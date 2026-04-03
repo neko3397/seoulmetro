@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { CalendarDays, Download, FileText, Heart, MessageCircle, UserRound } from "lucide-react";
-import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
-import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf.mjs";
+import pdfWorkerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 import { CommunityPost } from "../../types/content";
 import { Badge } from "../../components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
@@ -35,6 +35,11 @@ if (!mapPrototype.getOrInsertComputed) {
 }
 
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+
+function isSamsungInternetBrowser() {
+  if (typeof navigator === "undefined") return false;
+  return /SamsungBrowser/i.test(navigator.userAgent || "");
+}
 
 interface CommunityPostDetailPageProps {
   post: CommunityPost | null;
@@ -101,6 +106,7 @@ function PdfInlineRenderer({ url, title }: PdfInlineRendererProps) {
   const [pageImages, setPageImages] = useState<string[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const samsungInternet = isSamsungInternetBrowser();
 
   useEffect(() => {
     const element = containerRef.current;
@@ -123,6 +129,7 @@ function PdfInlineRenderer({ url, title }: PdfInlineRendererProps) {
 
     let cancelled = false;
     const abortController = new AbortController();
+    let loadingTask: ReturnType<typeof getDocument> | null = null;
     const renderPdf = async () => {
       setIsLoading(true);
       setLoadError(null);
@@ -137,7 +144,7 @@ function PdfInlineRenderer({ url, title }: PdfInlineRendererProps) {
         }
 
         const pdfBytes = await response.arrayBuffer();
-        const loadingTask = getDocument({
+        loadingTask = getDocument({
           data: pdfBytes,
           disableAutoFetch: true,
           disableStream: true,
@@ -145,11 +152,14 @@ function PdfInlineRenderer({ url, title }: PdfInlineRendererProps) {
         });
         const pdf = await loadingTask.promise;
         const renderedPages: string[] = [];
+        const pageLimit = samsungInternet ? 1 : pdf.numPages;
 
-        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+        for (let pageNumber = 1; pageNumber <= pageLimit; pageNumber += 1) {
           const page = await pdf.getPage(pageNumber);
           const baseViewport = page.getViewport({ scale: 1 });
-          const scale = Math.max(containerWidth / baseViewport.width, 1);
+          const scale = samsungInternet
+            ? Math.min(Math.max(containerWidth / baseViewport.width, 1), 1.5)
+            : Math.max(containerWidth / baseViewport.width, 1);
           const viewport = page.getViewport({ scale });
           const canvas = document.createElement("canvas");
           const context = canvas.getContext("2d");
@@ -160,13 +170,20 @@ function PdfInlineRenderer({ url, title }: PdfInlineRendererProps) {
 
           await page.render({ canvasContext: context, viewport, canvas }).promise;
           renderedPages.push(canvas.toDataURL("image/png"));
+          page.cleanup();
         }
 
+        pdf.cleanup();
+        await pdf.destroy();
         if (!cancelled) setPageImages(renderedPages);
       } catch (error) {
         console.error("Failed to render pdf inline:", error);
         if (!cancelled) {
-          setLoadError("PDF를 화면에 표시하지 못했습니다. 원본 문서를 새 창에서 열어 확인해 주세요.");
+          setLoadError(
+            samsungInternet
+              ? "삼성 인터넷에서 PDF 미리보기를 안정적으로 표시하지 못했습니다. 아래 버튼으로 원본 문서를 열어 확인해 주세요."
+              : "PDF를 화면에 표시하지 못했습니다. 원본 문서를 새 창에서 열어 확인해 주세요.",
+          );
           setPageImages([]);
         }
       } finally {
@@ -179,8 +196,9 @@ function PdfInlineRenderer({ url, title }: PdfInlineRendererProps) {
     return () => {
       cancelled = true;
       abortController.abort();
+      void loadingTask?.destroy();
     };
-  }, [containerWidth, url]);
+  }, [containerWidth, samsungInternet, url]);
 
   return (
     <div ref={containerRef} className="space-y-4 bg-slate-100/80 p-4 md:p-6">
@@ -192,6 +210,12 @@ function PdfInlineRenderer({ url, title }: PdfInlineRendererProps) {
 
       {loadError ? (
         <div className="rounded-[1.5rem] border border-red-200 bg-red-50 px-6 py-5 text-sm text-red-700">{loadError}</div>
+      ) : null}
+
+      {!isLoading && !loadError && samsungInternet ? (
+        <div className="rounded-[1.25rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          삼성 인터넷에서는 호환성을 위해 첫 페이지만 미리보기로 표시합니다.
+        </div>
       ) : null}
 
       {!isLoading && !loadError

@@ -4,6 +4,7 @@ import { Video } from "./types/video";
 import {
   CommunityPost,
   FeedItem,
+  GuideCategory,
   GuideDetail,
   PersonalizedProfileInput,
   PersonalizedRecommendationRule,
@@ -52,6 +53,12 @@ const EducationVideosPage = lazy(() =>
 const PersonalizedEducationPage = lazy(() =>
   import("./app/pages/PersonalizedEducationPage").then((module) => ({ default: module.PersonalizedEducationPage })),
 );
+const DocumentCategoriesPage = lazy(() =>
+  import("./app/pages/DocumentCategoriesPage").then((module) => ({ default: module.DocumentCategoriesPage })),
+);
+const DocumentListPage = lazy(() =>
+  import("./app/pages/DocumentListPage").then((module) => ({ default: module.DocumentListPage })),
+);
 const VideoDetailPage = lazy(() =>
   import("./app/pages/VideoDetailPage").then((module) => ({ default: module.VideoDetailPage })),
 );
@@ -60,9 +67,6 @@ const VideoListPage = lazy(() =>
 );
 const WikiDetailPage = lazy(() =>
   import("./app/pages/WikiDetailPage").then((module) => ({ default: module.WikiDetailPage })),
-);
-const WikiListPage = lazy(() =>
-  import("./app/pages/WikiListPage").then((module) => ({ default: module.WikiListPage })),
 );
 
 export default function App() {
@@ -99,6 +103,7 @@ export default function App() {
   );
   const [categories, setCategories] = useState<Category[]>([]);
   const [videosByCategory, setVideosByCategory] = useState<Record<string, Video[]>>({});
+  const [guideCategories, setGuideCategories] = useState<GuideCategory[]>([]);
   const [guides, setGuides] = useState<GuideDetail[]>([]);
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
   const [personalizedProfile, setPersonalizedProfile] = useState<PersonalizedProfileInput>(readPersistedProfile);
@@ -125,6 +130,7 @@ export default function App() {
       readCachedValue<AppShellCache>(APP_SHELL_CACHE_KEY) ?? {
         categories,
         videosByCategory,
+        guideCategories,
         guides,
         feedItems,
       };
@@ -152,6 +158,7 @@ export default function App() {
   const applyShellCache = (shell: AppShellCache) => {
     setCategories(shell.categories);
     setVideosByCategory(shell.videosByCategory);
+    setGuideCategories(shell.guideCategories || []);
     setGuides(shell.guides);
     setFeedItems(shell.feedItems);
     syncSelectedEntities(shell);
@@ -396,6 +403,7 @@ export default function App() {
       const nextShell: AppShellCache = {
         categories: loadedCategories,
         videosByCategory: cachedShell?.videosByCategory || {},
+        guideCategories: cachedShell?.guideCategories || [],
         guides: cachedShell?.guides || [],
         feedItems: nextFeedItems,
       };
@@ -406,6 +414,7 @@ export default function App() {
       writeCachedValue(APP_SHELL_CACHE_KEY, nextShell);
 
       void loadGuides({ force, silent: true });
+      void loadGuideCategories({ force, silent: true });
       void loadVideoCatalog(loadedCategories, { force, silent: true });
     } catch (error) {
       console.error("Failed to load app data:", error);
@@ -537,6 +546,7 @@ export default function App() {
         ...(readCachedValue<AppShellCache>(APP_SHELL_CACHE_KEY) ?? {
           categories,
           videosByCategory,
+          guideCategories,
           guides: [],
           feedItems,
         }),
@@ -546,6 +556,40 @@ export default function App() {
       syncSelectedEntities(nextShell);
     } catch (error) {
       console.error("Failed to refresh guides:", error);
+    } finally {
+      if (!silent) {
+        setWikiLoading(false);
+      }
+    }
+  };
+
+  const loadGuideCategories = async ({
+    force = false,
+    silent = false,
+  }: {
+    force?: boolean;
+    silent?: boolean;
+  } = {}) => {
+    const cachedShell = readCachedValue<AppShellCache>(APP_SHELL_CACHE_KEY);
+    const hasCachedCategories = !!cachedShell?.guideCategories?.length;
+    if (!force && hasCachedCategories) {
+      setGuideCategories(cachedShell.guideCategories);
+      return;
+    }
+
+    try {
+      if (!silent) {
+        setWikiLoading(true);
+      }
+      const data = await apiRequestJson<{ categories?: GuideCategory[] }>("/document-categories");
+      const nextGuideCategories = data.categories || [];
+      setGuideCategories(nextGuideCategories);
+      updateShellCache((currentShell) => ({
+        ...currentShell,
+        guideCategories: nextGuideCategories,
+      }));
+    } catch (error) {
+      console.error("Failed to refresh document categories:", error);
     } finally {
       if (!silent) {
         setWikiLoading(false);
@@ -712,6 +756,31 @@ export default function App() {
     [categories, selectedTopicId],
   );
   const currentVideos = useMemo(() => videosByCategory[selectedTopicId] || [], [selectedTopicId, videosByCategory]);
+  const currentGuideCategory = useMemo(
+    () => guideCategories.find((category) => category.id === selectedTopicId) || null,
+    [guideCategories, selectedTopicId],
+  );
+  const guidesByCategory = useMemo(
+    () =>
+      guides.reduce<Record<string, GuideDetail[]>>((accumulator, guide) => {
+        const categoryId = guide.categoryId || "uncategorized";
+        if (!accumulator[categoryId]) {
+          accumulator[categoryId] = [];
+        }
+        accumulator[categoryId].push(guide);
+        return accumulator;
+      }, {}),
+    [guides],
+  );
+  const currentGuides = useMemo(() => guidesByCategory[selectedTopicId] || [], [guidesByCategory, selectedTopicId]);
+  const guideCountByCategory = useMemo(
+    () =>
+      Object.entries(guidesByCategory).reduce<Record<string, number>>((accumulator, [categoryId, items]) => {
+        accumulator[categoryId] = items.length;
+        return accumulator;
+      }, {}),
+    [guidesByCategory],
+  );
   const personalizedVideos = recommendationRule?.videos || [];
 
   if (currentView === "adminLogin") {
@@ -763,14 +832,19 @@ export default function App() {
                   navigateTo("educationVideos", { video: null, guide: null, post: null });
                 }}
                 onOpenWikiDocs={() => {
+                  if (!guideCategories.length) {
+                    void loadGuideCategories({ silent: true });
+                  }
                   if (!guides.length) {
                     void loadGuides({ silent: true });
                   }
                   navigateTo("wikiDocs", { video: null, guide: null, post: null });
                 }}
+                onOpenNotices={() => setIsComposerOpen(false)}
                 onOpenPersonalizedEducation={() =>
                   navigateTo("personalizedEducation", { video: null, guide: null, post: null })
                 }
+                onGoMyPage={() => navigateTo("myPage", { video: null, guide: null, post: null })}
                 onSelectFeedItem={handleFeedItemSelect}
               />
             ) : null}
@@ -818,11 +892,20 @@ export default function App() {
 
             {currentView === "wikiDocs" ? (
               withRouteFallback(
-                <WikiListPage
-                  guides={guides}
-                  wikiLoading={wikiLoading}
-                  onRefresh={() => void loadGuides()}
-                  onSelectGuide={(guide) => navigateTo("wikiDetail", { guide })}
+                <DocumentCategoriesPage
+                  categories={guideCategories}
+                  documentCountByCategory={guideCountByCategory}
+                  onSelectCategory={(categoryId) => navigateTo("wikiList", { topicId: categoryId, guide: null })}
+                />,
+              )
+            ) : null}
+
+            {currentView === "wikiList" ? (
+              withRouteFallback(
+                <DocumentListPage
+                  category={currentGuideCategory}
+                  guides={currentGuides}
+                  onSelectGuide={(guide) => navigateTo("wikiDetail", { topicId: guide.categoryId || "", guide })}
                 />,
               )
             ) : null}

@@ -1,4 +1,5 @@
-import { ArrowLeft, BookOpen, FileImage, FileText, Play, Sparkles, Video as VideoIcon } from "lucide-react";
+import { ArrowLeft, Bell, BookOpen, FileImage, FileText, Play, Sparkles, User, Video as VideoIcon } from "lucide-react";
+import { useRef } from "react";
 import { UserCommunityComposer } from "../../components/UserCommunityComposer";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -19,7 +20,9 @@ interface HomeFeedPageProps {
   onCloseComposer: () => void;
   onOpenEducationVideos: () => void;
   onOpenWikiDocs: () => void;
+  onOpenNotices: () => void;
   onOpenPersonalizedEducation: () => void;
+  onGoMyPage: () => void;
   onSelectFeedItem: (item: FeedItem) => void | Promise<void>;
 }
 
@@ -35,9 +38,18 @@ export function HomeFeedPage({
   onCloseComposer,
   onOpenEducationVideos,
   onOpenWikiDocs,
+  onOpenNotices,
   onOpenPersonalizedEducation,
+  onGoMyPage,
   onSelectFeedItem,
 }: HomeFeedPageProps) {
+  const feedSectionRef = useRef<HTMLElement | null>(null);
+
+  const handleOpenNotices = () => {
+    onOpenNotices();
+    feedSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   const renderFeedItem = (item: FeedItem) => {
     const icon =
       item.itemType === "video" ? (
@@ -135,6 +147,17 @@ export function HomeFeedPage({
         <div className="mb-4 flex max-w-3xl gap-3">
           <button
             type="button"
+            onClick={handleOpenNotices}
+            className={`${primaryNavButtonClassName} min-w-0 flex-1`}
+            style={primaryNavButtonTextStyle}
+          >
+            <Bell className="h-5 w-5 shrink-0 text-slate-900" />
+            <span className="text-sm font-medium leading-tight text-slate-900" style={primaryNavButtonTextStyle}>
+              업무공지
+            </span>
+          </button>
+          <button
+            type="button"
             onClick={onOpenEducationVideos}
             className={`${primaryNavButtonClassName} min-w-0 flex-1`}
             style={primaryNavButtonTextStyle}
@@ -152,7 +175,7 @@ export function HomeFeedPage({
           >
             <BookOpen className="h-5 w-5 shrink-0 text-slate-900" />
             <span className="text-sm font-medium leading-tight text-slate-900" style={primaryNavButtonTextStyle}>
-              위키문서
+              문서
             </span>
           </button>
           <button
@@ -163,13 +186,24 @@ export function HomeFeedPage({
           >
             <Sparkles className="h-5 w-5 shrink-0 text-slate-900" />
             <span className="text-sm font-medium leading-tight text-slate-900" style={primaryNavButtonTextStyle}>
-              맞춤형 교육
+              맞춤형교육
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={onGoMyPage}
+            className={`${primaryNavButtonClassName} min-w-0 flex-1`}
+            style={primaryNavButtonTextStyle}
+          >
+            <User className="h-5 w-5 shrink-0 text-slate-900" />
+            <span className="text-sm font-medium leading-tight text-slate-900" style={primaryNavButtonTextStyle}>
+              마이페이지
             </span>
           </button>
         </div>
       </section>
 
-      <section className="mx-auto max-w-3xl space-y-4 pb-8">
+      <section ref={feedSectionRef} className="mx-auto max-w-3xl space-y-4 pb-8">
         <div className="flex items-center justify-between gap-4">
           <div>
             <h3 className="text-2xl font-semibold">최신 게시물</h3>

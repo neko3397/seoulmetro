@@ -13,6 +13,7 @@ import { CategoryManagement } from "./CategoryManagement";
 import { AdminManagement } from "./AdminManagement";
 import { AuthorizedEmployeeManagement } from "./AuthorizedEmployeeManagement";
 import { CommunityManagement } from "./CommunityManagement";
+import { DocumentCategoryManagement } from "./DocumentCategoryManagement";
 import { GuideManagement } from "./GuideManagement";
 import { AISettingsManagement } from "./AISettingsManagement";
 import { OperationsOverview } from "./OperationsOverview";
@@ -136,7 +137,12 @@ export function AdminDashboard({ admin, onLogout }: AdminDashboardProps) {
       case "community":
         return <CommunityManagement admin={admin} onUpdated={handleUpdated} />;
       case "guides":
-        return <GuideManagement onUpdated={handleUpdated} />;
+        return (
+          <div className="space-y-6">
+            <DocumentCategoryManagement onUpdated={handleUpdated} />
+            <GuideManagement onUpdated={handleUpdated} />
+          </div>
+        );
       case "ai":
         return <AISettingsManagement onUpdated={handleUpdated} />;
       case "authorized-users":
