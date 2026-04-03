@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Video } from '../types/video';
 import { useWatchProgress } from '../hooks/useWatchProgress';
+import { extractYouTubeVideoId } from '../lib/video';
 
 interface YouTubePlayerProps {
   video: Video;
@@ -21,6 +22,7 @@ export const YouTubePlayer = ({ video, categoryId }: YouTubePlayerProps) => {
   const [apiReady, setApiReady] = useState(false);
   const { updateProgress } = useWatchProgress();
   const progressUpdateRef = useRef<NodeJS.Timeout>();
+  const youtubeVideoId = extractYouTubeVideoId(video.youtubeId);
 
   // YouTube API 로드
   useEffect(() => {
@@ -41,12 +43,12 @@ export const YouTubePlayer = ({ video, categoryId }: YouTubePlayerProps) => {
 
   // YouTube 플레이어 초기화
   useEffect(() => {
-    if (!apiReady || !containerRef.current) return;
+    if (!apiReady || !containerRef.current || !youtubeVideoId) return;
 
     playerRef.current = new window.YT.Player(containerRef.current, {
       height: '100%',
       width: '100%',
-      videoId: video.youtubeId,
+      videoId: youtubeVideoId,
       playerVars: {
         autoplay: 0,
         controls: 1,
@@ -75,7 +77,7 @@ export const YouTubePlayer = ({ video, categoryId }: YouTubePlayerProps) => {
       }
       stopProgressTracking();
     };
-  }, [apiReady, video.youtubeId]);
+  }, [apiReady, youtubeVideoId]);
 
   const startProgressTracking = () => {
     stopProgressTracking();

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { videos as mockVideos } from "./data/mockData";
 import { Video } from "./types/video";
 import {
@@ -9,9 +9,7 @@ import {
   PersonalizedRecommendationRule,
 } from "./types/content";
 import { AdminLogin } from "./components/AdminLogin";
-import { AdminDashboard } from "./components/AdminDashboard";
 import { UserLogin } from "./components/UserLogin";
-import MyPage from "./components/MyPage";
 import { Card, CardContent } from "./components/ui/card";
 import { apiRequestJson } from "./lib/api";
 import {
@@ -29,14 +27,7 @@ import {
   PERSONALIZED_PROFILE_STORAGE_KEY,
   RECOMMENDATION_CACHE_PREFIX,
 } from "./app/constants";
-import { CommunityPostDetailPage } from "./app/pages/CommunityPostDetailPage";
-import { EducationVideosPage } from "./app/pages/EducationVideosPage";
 import { HomeFeedPage } from "./app/pages/HomeFeedPage";
-import { PersonalizedEducationPage } from "./app/pages/PersonalizedEducationPage";
-import { VideoDetailPage } from "./app/pages/VideoDetailPage";
-import { VideoListPage } from "./app/pages/VideoListPage";
-import { WikiDetailPage } from "./app/pages/WikiDetailPage";
-import { WikiListPage } from "./app/pages/WikiListPage";
 import { AppShellCache, Category, NavigateOptions, NavigationState, ViewState } from "./app/types";
 import {
   isSameNavigationState,
@@ -47,6 +38,32 @@ import {
   readPersistedProfile,
   sortVideosByCreatedAt,
 } from "./app/utils";
+
+const AdminDashboard = lazy(() =>
+  import("./components/AdminDashboard").then((module) => ({ default: module.AdminDashboard })),
+);
+const MyPage = lazy(() => import("./components/MyPage"));
+const CommunityPostDetailPage = lazy(() =>
+  import("./app/pages/CommunityPostDetailPage").then((module) => ({ default: module.CommunityPostDetailPage })),
+);
+const EducationVideosPage = lazy(() =>
+  import("./app/pages/EducationVideosPage").then((module) => ({ default: module.EducationVideosPage })),
+);
+const PersonalizedEducationPage = lazy(() =>
+  import("./app/pages/PersonalizedEducationPage").then((module) => ({ default: module.PersonalizedEducationPage })),
+);
+const VideoDetailPage = lazy(() =>
+  import("./app/pages/VideoDetailPage").then((module) => ({ default: module.VideoDetailPage })),
+);
+const VideoListPage = lazy(() =>
+  import("./app/pages/VideoListPage").then((module) => ({ default: module.VideoListPage })),
+);
+const WikiDetailPage = lazy(() =>
+  import("./app/pages/WikiDetailPage").then((module) => ({ default: module.WikiDetailPage })),
+);
+const WikiListPage = lazy(() =>
+  import("./app/pages/WikiListPage").then((module) => ({ default: module.WikiListPage })),
+);
 
 export default function App() {
   const restoredNavigationState = readPersistedNavigationState();
@@ -102,6 +119,17 @@ export default function App() {
     `${RECOMMENDATION_CACHE_PREFIX}${profile.role}:${profile.careerStage}`;
 
   const getCommunityPostCacheKey = (postId: string) => `${COMMUNITY_POST_CACHE_PREFIX}${postId}`;
+
+  const updateShellCache = (updater: (current: AppShellCache) => AppShellCache) => {
+    const currentShell =
+      readCachedValue<AppShellCache>(APP_SHELL_CACHE_KEY) ?? {
+        categories,
+        videosByCategory,
+        guides,
+        feedItems,
+      };
+    writeCachedValue(APP_SHELL_CACHE_KEY, updater(currentShell));
+  };
 
   const syncSelectedEntities = (shell: AppShellCache) => {
     if (selectedGuide) {
@@ -358,37 +386,27 @@ export default function App() {
       if (showLoading) {
         setLoading(true);
       }
-      const [categoriesData, feedData, guidesData] = await Promise.all([
+      const [categoriesData, feedData] = await Promise.all([
         apiRequestJson<{ categories?: Category[] }>("/categories"),
         apiRequestJson<{ items?: FeedItem[] }>("/feed"),
-        apiRequestJson<{ guides?: GuideDetail[] }>("/guides?includeDrafts=false"),
       ]);
 
       const loadedCategories = categoriesData.categories || [];
-
-      setCategories(loadedCategories);
-      setGuides(guidesData.guides || []);
-      setFeedItems(feedData.items || []);
-
-      const videoResponses = await Promise.all(
-        loadedCategories.map((category: Category) => apiRequestJson<{ videos?: Video[] }>(`/videos/${category.id}`)),
-      );
-
-      const nextVideosByCategory: Record<string, Video[]> = {};
-      loadedCategories.forEach((category: Category, index: number) => {
-        const serverVideos = Array.isArray(videoResponses[index].videos) ? videoResponses[index].videos : [];
-        nextVideosByCategory[category.id] = sortVideosByCreatedAt(serverVideos);
-      });
-
+      const nextFeedItems = feedData.items || [];
       const nextShell: AppShellCache = {
         categories: loadedCategories,
-        videosByCategory: nextVideosByCategory,
-        guides: guidesData.guides || [],
-        feedItems: feedData.items || [],
+        videosByCategory: cachedShell?.videosByCategory || {},
+        guides: cachedShell?.guides || [],
+        feedItems: nextFeedItems,
       };
 
+      setCategories(loadedCategories);
+      setFeedItems(nextFeedItems);
       applyShellCache(nextShell);
       writeCachedValue(APP_SHELL_CACHE_KEY, nextShell);
+
+      void loadGuides({ force, silent: true });
+      void loadVideoCatalog(loadedCategories, { force, silent: true });
     } catch (error) {
       console.error("Failed to load app data:", error);
       if (cachedShell) {
@@ -398,6 +416,55 @@ export default function App() {
       }
     } finally {
       if (showLoading) {
+        setLoading(false);
+      }
+    }
+  };
+
+  const loadVideoCatalog = async (
+    categoriesToLoad: Category[],
+    { force = false, silent = false }: { force?: boolean; silent?: boolean } = {},
+  ) => {
+    if (!categoriesToLoad.length) {
+      setVideosByCategory({});
+      return;
+    }
+
+    const cachedShell = readCachedValue<AppShellCache>(APP_SHELL_CACHE_KEY);
+    const hasCachedVideos = !!cachedShell && Object.keys(cachedShell.videosByCategory || {}).length > 0;
+    if (!force && hasCachedVideos) {
+      setVideosByCategory(cachedShell.videosByCategory);
+      return;
+    }
+
+    try {
+      if (!silent) {
+        setLoading(true);
+      }
+
+      const videoResponses = await Promise.all(
+        categoriesToLoad.map((category) => apiRequestJson<{ videos?: Video[] }>(`/videos/${category.id}`)),
+      );
+
+      const nextVideosByCategory: Record<string, Video[]> = {};
+      categoriesToLoad.forEach((category, index) => {
+        const serverVideos = Array.isArray(videoResponses[index].videos) ? videoResponses[index].videos : [];
+        nextVideosByCategory[category.id] = sortVideosByCreatedAt(serverVideos);
+      });
+
+      setVideosByCategory(nextVideosByCategory);
+      updateShellCache((currentShell) => ({
+        ...currentShell,
+        categories: categoriesToLoad,
+        videosByCategory: nextVideosByCategory,
+      }));
+    } catch (error) {
+      console.error("Failed to load video catalog:", error);
+      if (!cachedShell) {
+        setVideosByCategory(mockVideos);
+      }
+    } finally {
+      if (!silent) {
         setLoading(false);
       }
     }
@@ -447,13 +514,10 @@ export default function App() {
       const data = await apiRequestJson<{ items?: FeedItem[] }>("/feed");
       const nextFeedItems = data.items || [];
       setFeedItems(nextFeedItems);
-      const cachedShell = readCachedValue<AppShellCache>(APP_SHELL_CACHE_KEY);
-      if (cachedShell) {
-        writeCachedValue(APP_SHELL_CACHE_KEY, {
-          ...cachedShell,
-          feedItems: nextFeedItems,
-        });
-      }
+      updateShellCache((currentShell) => ({
+        ...currentShell,
+        feedItems: nextFeedItems,
+      }));
     } catch (error) {
       console.error("Failed to refresh feed:", error);
     } finally {
@@ -469,15 +533,17 @@ export default function App() {
       const data = await apiRequestJson<{ guides?: GuideDetail[] }>("/guides?includeDrafts=false");
       const nextGuides = data.guides || [];
       setGuides(nextGuides);
-      const cachedShell = readCachedValue<AppShellCache>(APP_SHELL_CACHE_KEY);
-      if (cachedShell) {
-        const nextShell = {
-          ...cachedShell,
-          guides: nextGuides,
-        };
-        writeCachedValue(APP_SHELL_CACHE_KEY, nextShell);
-        syncSelectedEntities(nextShell);
-      }
+      const nextShell = {
+        ...(readCachedValue<AppShellCache>(APP_SHELL_CACHE_KEY) ?? {
+          categories,
+          videosByCategory,
+          guides: [],
+          feedItems,
+        }),
+        guides: nextGuides,
+      };
+      writeCachedValue(APP_SHELL_CACHE_KEY, nextShell);
+      syncSelectedEntities(nextShell);
     } catch (error) {
       console.error("Failed to refresh guides:", error);
     } finally {
@@ -534,6 +600,18 @@ export default function App() {
       video,
     });
   };
+
+  const withRouteFallback = (content: ReactNode, message = "페이지를 불러오는 중...") => (
+    <Suspense
+      fallback={
+        <Card>
+          <CardContent className="py-16 text-center">{message}</CardContent>
+        </Card>
+      }
+    >
+      {content}
+    </Suspense>
+  );
 
   const handleFeedItemSelect = async (item: FeedItem) => {
     if (item.target.type === "video" && item.video) {
@@ -644,7 +722,11 @@ export default function App() {
     if (!adminUser) {
       return <AdminLogin onLogin={handleAdminLogin} onBack={handleBack} />;
     }
-    return <AdminDashboard admin={adminUser} onLogout={handleAdminLogout} />;
+    return (
+      <Suspense fallback={<AppLoadingScreen />}>
+        <AdminDashboard admin={adminUser} onLogout={handleAdminLogout} />
+      </Suspense>
+    );
   }
 
   if (currentView === "userLogin") {
@@ -674,8 +756,18 @@ export default function App() {
                   void refreshFeed();
                 }}
                 onCloseComposer={() => setIsComposerOpen(false)}
-                onOpenEducationVideos={() => navigateTo("educationVideos", { video: null, guide: null, post: null })}
-                onOpenWikiDocs={() => navigateTo("wikiDocs", { video: null, guide: null, post: null })}
+                onOpenEducationVideos={() => {
+                  if (!Object.keys(videosByCategory).length && categories.length) {
+                    void loadVideoCatalog(categories, { silent: true });
+                  }
+                  navigateTo("educationVideos", { video: null, guide: null, post: null });
+                }}
+                onOpenWikiDocs={() => {
+                  if (!guides.length) {
+                    void loadGuides({ silent: true });
+                  }
+                  navigateTo("wikiDocs", { video: null, guide: null, post: null });
+                }}
                 onOpenPersonalizedEducation={() =>
                   navigateTo("personalizedEducation", { video: null, guide: null, post: null })
                 }
@@ -684,28 +776,34 @@ export default function App() {
             ) : null}
 
             {currentView === "educationVideos" ? (
-              <EducationVideosPage
-                categories={categories}
-                videosByCategory={videosByCategory}
-                onSelectCategory={(categoryId) => navigateTo("videoList", { topicId: categoryId, video: null })}
-              />
+              withRouteFallback(
+                <EducationVideosPage
+                  categories={categories}
+                  videosByCategory={videosByCategory}
+                  onSelectCategory={(categoryId) => navigateTo("videoList", { topicId: categoryId, video: null })}
+                />,
+              )
             ) : null}
 
             {currentView === "videoList" ? (
-              <VideoListPage
-                currentTopic={currentTopic}
-                currentVideos={currentVideos}
-                onSelectVideo={handleOpenVideoDetail}
-              />
+              withRouteFallback(
+                <VideoListPage
+                  currentTopic={currentTopic}
+                  currentVideos={currentVideos}
+                  onSelectVideo={handleOpenVideoDetail}
+                />,
+              )
             ) : null}
 
             {currentView === "videoDetail" ? (
-              <VideoDetailPage
-                selectedVideo={selectedVideo}
-                selectedTopicId={selectedTopicId}
-                videosByCategory={videosByCategory}
-                onSelectVideo={handleOpenVideoDetail}
-              />
+              withRouteFallback(
+                <VideoDetailPage
+                  selectedVideo={selectedVideo}
+                  selectedTopicId={selectedTopicId}
+                  videosByCategory={videosByCategory}
+                  onSelectVideo={handleOpenVideoDetail}
+                />,
+              )
             ) : null}
 
             {currentView === "communityPostDetail" ? (
@@ -714,32 +812,36 @@ export default function App() {
                   <CardContent className="py-16 text-center">게시물 상세를 불러오는 중...</CardContent>
                 </Card>
               ) : (
-                <CommunityPostDetailPage post={selectedPost} />
+                withRouteFallback(<CommunityPostDetailPage post={selectedPost} />, "게시물 화면을 불러오는 중...")
               )
             ) : null}
 
             {currentView === "wikiDocs" ? (
-              <WikiListPage
-                guides={guides}
-                wikiLoading={wikiLoading}
-                onRefresh={() => void loadGuides()}
-                onSelectGuide={(guide) => navigateTo("wikiDetail", { guide })}
-              />
+              withRouteFallback(
+                <WikiListPage
+                  guides={guides}
+                  wikiLoading={wikiLoading}
+                  onRefresh={() => void loadGuides()}
+                  onSelectGuide={(guide) => navigateTo("wikiDetail", { guide })}
+                />,
+              )
             ) : null}
 
-            {currentView === "wikiDetail" ? <WikiDetailPage guide={selectedGuide} /> : null}
+            {currentView === "wikiDetail" ? withRouteFallback(<WikiDetailPage guide={selectedGuide} />) : null}
 
             {currentView === "personalizedEducation" ? (
-              <PersonalizedEducationPage
-                personalizedProfile={personalizedProfile}
-                recommendationLoading={recommendationLoading}
-                personalizedVideos={personalizedVideos}
-                onUpdateProfile={setPersonalizedProfile}
-                onSelectVideo={handleOpenVideoDetail}
-              />
+              withRouteFallback(
+                <PersonalizedEducationPage
+                  personalizedProfile={personalizedProfile}
+                  recommendationLoading={recommendationLoading}
+                  personalizedVideos={personalizedVideos}
+                  onUpdateProfile={setPersonalizedProfile}
+                  onSelectVideo={handleOpenVideoDetail}
+                />,
+              )
             ) : null}
 
-            {currentView === "myPage" ? <MyPage videosByCategory={videosByCategory} onBack={handleBack} /> : null}
+            {currentView === "myPage" ? withRouteFallback(<MyPage videosByCategory={videosByCategory} onBack={handleBack} />) : null}
           </div>
         )}
       </main>

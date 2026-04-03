@@ -14,6 +14,7 @@ import { Alert, AlertDescription } from './ui/alert';
 import { Plus, Edit, Trash2, Video, ExternalLink, Upload, Youtube, FileVideo, Info } from 'lucide-react';
 import { projectId, publicAnonKey } from '../utils/supabase/info';
 import { notifyContentChanged } from '../lib/contentSync';
+import { extractYouTubeVideoId, getYouTubeThumbnailUrl } from '../lib/video';
 
 interface Video {
   id: string;
@@ -39,10 +40,10 @@ interface VideoManagementProps {
 
 export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
   const DEFAULT_LOCAL_THUMBNAIL = 'https://via.placeholder.com/480x270/1f2937/ffffff?text=Video';
-  const getYouTubeThumbnailUrl = (id: string) => `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
   const resolveThumbnailForVideo = (video: Partial<Video>) => {
-    if (video.videoType === 'youtube' && video.youtubeId) {
-      return video.thumbnail || getYouTubeThumbnailUrl(video.youtubeId);
+    if (video.videoType === 'youtube') {
+      const youtubeId = extractYouTubeVideoId(video.youtubeId);
+      return video.thumbnail || getYouTubeThumbnailUrl(youtubeId);
     }
     return video.thumbnail || DEFAULT_LOCAL_THUMBNAIL;
   };
@@ -130,6 +131,7 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
       const data = await response.json();
       const normalizedVideos = (data.videos || []).map((video: Video) => ({
         ...video,
+        youtubeId: extractYouTubeVideoId(video.youtubeId),
         thumbnail: resolveThumbnailForVideo(video),
       }));
       setVideos(prev => ({
@@ -270,7 +272,7 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
       const trimmedDescription = formData.description.trim();
       const trimmedDuration = formData.duration.trim();
       const sanitizedYoutubeId = uploadMethod === 'youtube'
-        ? extractYouTubeId(formData.youtubeId.trim())
+        ? extractYouTubeVideoId(formData.youtubeId.trim())
         : '';
 
       let resolvedVideoUrl = editingVideo?.videoUrl || '';
@@ -420,11 +422,6 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
     setIsUploading(false);
   };
 
-  const extractYouTubeId = (url: string) => {
-    const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/);
-    return match ? match[1] : url;
-  };
-
   const formatDuration = (duration: string) => {
     // If it's already in MM:SS format, return as is
     if (duration.includes(':')) return duration;
@@ -554,7 +551,7 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
                               value={formData.youtubeId}
                               onChange={(e) => setFormData(prev => ({
                                 ...prev,
-                                youtubeId: extractYouTubeId(e.target.value)
+                                youtubeId: extractYouTubeVideoId(e.target.value)
                               }))}
                               placeholder="https://www.youtube.com/watch?v=VIDEO_ID 또는 VIDEO_ID"
                               required={uploadMethod === 'youtube'}
@@ -624,7 +621,7 @@ export function VideoManagement({ onStatsUpdate }: VideoManagementProps) {
                             value={formData.youtubeId}
                             onChange={(e) => setFormData(prev => ({
                               ...prev,
-                              youtubeId: extractYouTubeId(e.target.value)
+                              youtubeId: extractYouTubeVideoId(e.target.value)
                             }))}
                             placeholder="YouTube URL 또는 비디오 ID"
                             required

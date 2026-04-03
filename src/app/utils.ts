@@ -1,5 +1,6 @@
 import { PersonalizedProfileInput } from "../types/content";
 import { Video } from "../types/video";
+import { normalizeVideo } from "../lib/video";
 import {
   NAV_STACK_STORAGE_KEY,
   NAV_STATE_STORAGE_KEY,
@@ -10,7 +11,8 @@ import { NavigationState } from "./types";
 export const readPersistedNavigationState = (): Partial<NavigationState> => {
   try {
     const raw = sessionStorage.getItem(NAV_STATE_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed?.video ? { ...parsed, video: normalizeVideo(parsed.video) } : parsed;
   } catch (error) {
     console.warn("Failed to parse persisted navigation state:", error);
     return {};
@@ -29,7 +31,11 @@ export const readPersistedNavigationStack = (): NavigationState[] => {
   try {
     const raw = sessionStorage.getItem(NAV_STACK_STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.filter((entry) => entry && typeof entry.view === "string") : [];
+    return Array.isArray(parsed)
+      ? parsed
+          .filter((entry) => entry && typeof entry.view === "string")
+          .map((entry) => (entry?.video ? { ...entry, video: normalizeVideo(entry.video) } : entry))
+      : [];
   } catch (error) {
     console.warn("Failed to parse persisted navigation stack:", error);
     return [];
@@ -59,7 +65,7 @@ export const readPersistedProfile = (): PersonalizedProfileInput => {
 };
 
 export const sortVideosByCreatedAt = (videos: Video[]) =>
-  [...videos].sort((a, b) => {
+  [...videos].map(normalizeVideo).sort((a, b) => {
     const aTime = new Date(a.createdAt || 0).getTime();
     const bTime = new Date(b.createdAt || 0).getTime();
     return bTime - aTime;

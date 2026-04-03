@@ -1,3 +1,5 @@
+import { Video } from "../types/video";
+
 export function parseDurationToSeconds(duration: number | string | undefined | null): number {
   if (typeof duration === "number") return duration;
   if (!duration) return 0;
@@ -34,4 +36,57 @@ export function formatDurationLabel(duration: number | string | undefined | null
   }
 
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+export function extractYouTubeVideoId(value: string | undefined | null): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  const directMatch = raw.match(/^[A-Za-z0-9_-]{11}$/);
+  if (directMatch) return directMatch[0];
+
+  try {
+    const parsed = new URL(raw);
+    const hostname = parsed.hostname.replace(/^www\./, "");
+
+    if (hostname === "youtu.be") {
+      const candidate = parsed.pathname.split("/").filter(Boolean)[0] || "";
+      return /^[A-Za-z0-9_-]{11}$/.test(candidate) ? candidate : "";
+    }
+
+    if (hostname === "youtube.com" || hostname.endsWith(".youtube.com")) {
+      const queryId = parsed.searchParams.get("v") || "";
+      if (/^[A-Za-z0-9_-]{11}$/.test(queryId)) return queryId;
+
+      const pathParts = parsed.pathname.split("/").filter(Boolean);
+      const embedIndex = pathParts.findIndex((part) => ["embed", "shorts", "live", "v"].includes(part));
+      if (embedIndex >= 0) {
+        const candidate = pathParts[embedIndex + 1] || "";
+        return /^[A-Za-z0-9_-]{11}$/.test(candidate) ? candidate : "";
+      }
+    }
+  } catch {
+    // Fall through to regex extraction for partially formed values.
+  }
+
+  const fallbackMatch = raw.match(/([A-Za-z0-9_-]{11})(?:[^A-Za-z0-9_-]|$)/);
+  return fallbackMatch ? fallbackMatch[1] : "";
+}
+
+export function getYouTubeThumbnailUrl(value: string | undefined | null): string {
+  const videoId = extractYouTubeVideoId(value);
+  return videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : "";
+}
+
+export function normalizeVideo(video: Video): Video {
+  if (video.videoType !== "youtube") return video;
+
+  const youtubeId = extractYouTubeVideoId(video.youtubeId);
+  const fallbackThumbnail = getYouTubeThumbnailUrl(youtubeId);
+
+  return {
+    ...video,
+    youtubeId,
+    thumbnail: video.thumbnail || fallbackThumbnail,
+  };
 }

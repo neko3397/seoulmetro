@@ -119,7 +119,23 @@ export default defineConfig({
     outDir: 'build',
     rollupOptions: {
       output: {
-        manualChunks: undefined,
+        manualChunks(id) {
+          if (id.includes('pdfjs-dist')) {
+            return 'pdfjs';
+          }
+
+          if (id.includes('/src/components/Admin') || id.includes('/src/components/GuideManagement') || id.includes('/src/components/VideoManagement') || id.includes('/src/components/CommunityManagement') || id.includes('/src/components/AuthorizedEmployeeManagement') || id.includes('/src/components/AISettingsManagement') || id.includes('/src/components/PersonalizedRecommendationManagement') || id.includes('/src/components/UserProgressManagement') || id.includes('/src/components/OperationsOverview') || id.includes('/src/components/CategoryManagement')) {
+            return 'admin';
+          }
+
+          if (id.includes('node_modules')) {
+            if (id.includes('@supabase')) {
+              return 'supabase';
+            }
+
+            return 'vendor';
+          }
+        },
       },
     },
     assetsDir: 'assets',

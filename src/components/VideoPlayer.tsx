@@ -4,7 +4,7 @@ import { useWatchProgress } from '../hooks/useWatchProgress';
 import { Button } from './ui/button';
 import { Play, Pause, Volume2, VolumeX, Maximize, RotateCcw } from 'lucide-react';
 import { Slider } from './ui/slider';
-import { parseDurationToSeconds } from '../lib/video';
+import { extractYouTubeVideoId, parseDurationToSeconds } from '../lib/video';
 
 interface VideoPlayerProps {
   video: Video;
@@ -32,6 +32,7 @@ export const VideoPlayer = ({ video, categoryId }: VideoPlayerProps) => {
   const { updateProgress } = useWatchProgress();
   const progressUpdateRef = useRef<NodeJS.Timeout>();
   const videoDurationInSeconds = parseDurationToSeconds(video.duration);
+  const youtubeVideoId = extractYouTubeVideoId(video.youtubeId);
 
   const getCurrentPlaybackSeconds = () => {
     if (video.videoType === 'youtube' && playerRef.current && playerRef.current.getCurrentTime) {
@@ -71,12 +72,12 @@ export const VideoPlayer = ({ video, categoryId }: VideoPlayerProps) => {
 
   // YouTube 플레이어 초기화
   useEffect(() => {
-    if (video.videoType !== 'youtube' || !apiReady || !containerRef.current || !video.youtubeId) return;
+    if (video.videoType !== 'youtube' || !apiReady || !containerRef.current || !youtubeVideoId) return;
 
     playerRef.current = new window.YT.Player(containerRef.current, {
       height: '100%',
       width: '100%',
-      videoId: video.youtubeId,
+      videoId: youtubeVideoId,
       playerVars: {
         autoplay: 0,
         controls: 1,
@@ -105,7 +106,7 @@ export const VideoPlayer = ({ video, categoryId }: VideoPlayerProps) => {
       }
       stopProgressTracking({ saveSnapshot: true });
     };
-  }, [apiReady, video.youtubeId, video.videoType]);
+  }, [apiReady, video.videoType, youtubeVideoId]);
 
   // 로컬 비디오 이벤트 핸들러
   useEffect(() => {
