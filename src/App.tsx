@@ -29,6 +29,7 @@ import {
   RECOMMENDATION_CACHE_PREFIX,
 } from "./app/constants";
 import { HomeFeedPage } from "./app/pages/HomeFeedPage";
+import { WikiListPage } from "./app/pages/WikiListPage";
 import { AppShellCache, Category, NavigateOptions, NavigationState, ViewState } from "./app/types";
 import {
   isSameNavigationState,
@@ -105,6 +106,7 @@ export default function App() {
   const [videosByCategory, setVideosByCategory] = useState<Record<string, Video[]>>({});
   const [guideCategories, setGuideCategories] = useState<GuideCategory[]>([]);
   const [guides, setGuides] = useState<GuideDetail[]>([]);
+  const [documentPosts, setDocumentPosts] = useState<CommunityPost[]>([]);
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
   const [personalizedProfile, setPersonalizedProfile] = useState<PersonalizedProfileInput>(readPersistedProfile);
   const [recommendationRule, setRecommendationRule] = useState<PersonalizedRecommendationRule | null>(null);
@@ -352,6 +354,10 @@ export default function App() {
         await loadInitialData({ force: true, showLoading: false });
       }
 
+      if (scopes.includes("community")) {
+        await loadDocumentPosts({ silent: true });
+      }
+
       if (scopes.includes("recommendations")) {
         await loadRecommendationRule(personalizedProfile, { force: true, silent: true });
       }
@@ -597,6 +603,23 @@ export default function App() {
     }
   };
 
+  const loadDocumentPosts = async ({ silent = false }: { silent?: boolean } = {}) => {
+    try {
+      if (!silent) {
+        setDetailLoading(true);
+      }
+      const data = await apiRequestJson<{ posts?: CommunityPost[] }>("/community/posts?includeDrafts=false");
+      const nextPosts = (data.posts || []).filter((post) => post.postType === "document");
+      setDocumentPosts(nextPosts);
+    } catch (error) {
+      console.error("Failed to load document posts:", error);
+    } finally {
+      if (!silent) {
+        setDetailLoading(false);
+      }
+    }
+  };
+
   const loadCommunityPostDetail = async (
     postId: string,
     { force = false, silent = false, navigate = true }: { force?: boolean; silent?: boolean; navigate?: boolean } = {},
@@ -756,30 +779,33 @@ export default function App() {
     [categories, selectedTopicId],
   );
   const currentVideos = useMemo(() => videosByCategory[selectedTopicId] || [], [selectedTopicId, videosByCategory]);
-  const currentGuideCategory = useMemo(
+  const currentDocumentCategory = useMemo(
     () => guideCategories.find((category) => category.id === selectedTopicId) || null,
     [guideCategories, selectedTopicId],
   );
-  const guidesByCategory = useMemo(
+  const documentPostsByCategory = useMemo(
     () =>
-      guides.reduce<Record<string, GuideDetail[]>>((accumulator, guide) => {
-        const categoryId = guide.categoryId || "uncategorized";
+      documentPosts.reduce<Record<string, CommunityPost[]>>((accumulator, post) => {
+        const categoryId = String(post.metadata?.documentCategoryId || "uncategorized");
         if (!accumulator[categoryId]) {
           accumulator[categoryId] = [];
         }
-        accumulator[categoryId].push(guide);
+        accumulator[categoryId].push(post);
         return accumulator;
       }, {}),
-    [guides],
+    [documentPosts],
   );
-  const currentGuides = useMemo(() => guidesByCategory[selectedTopicId] || [], [guidesByCategory, selectedTopicId]);
-  const guideCountByCategory = useMemo(
+  const currentDocumentPosts = useMemo(
+    () => documentPostsByCategory[selectedTopicId] || [],
+    [documentPostsByCategory, selectedTopicId],
+  );
+  const documentCountByCategory = useMemo(
     () =>
-      Object.entries(guidesByCategory).reduce<Record<string, number>>((accumulator, [categoryId, items]) => {
+      Object.entries(documentPostsByCategory).reduce<Record<string, number>>((accumulator, [categoryId, items]) => {
         accumulator[categoryId] = items.length;
         return accumulator;
       }, {}),
-    [guidesByCategory],
+    [documentPostsByCategory],
   );
   const personalizedVideos = recommendationRule?.videos || [];
 
@@ -831,10 +857,16 @@ export default function App() {
                   }
                   navigateTo("educationVideos", { video: null, guide: null, post: null });
                 }}
-                onOpenWikiDocs={() => {
+                onOpenDocuments={() => {
                   if (!guideCategories.length) {
                     void loadGuideCategories({ silent: true });
                   }
+                  if (!documentPosts.length) {
+                    void loadDocumentPosts({ silent: true });
+                  }
+                  navigateTo("documentDocs", { video: null, guide: null, post: null });
+                }}
+                onOpenWikiDocs={() => {
                   if (!guides.length) {
                     void loadGuides({ silent: true });
                   }
@@ -890,22 +922,33 @@ export default function App() {
               )
             ) : null}
 
-            {currentView === "wikiDocs" ? (
+            {currentView === "documentDocs" ? (
               withRouteFallback(
                 <DocumentCategoriesPage
                   categories={guideCategories}
-                  documentCountByCategory={guideCountByCategory}
-                  onSelectCategory={(categoryId) => navigateTo("wikiList", { topicId: categoryId, guide: null })}
+                  documentCountByCategory={documentCountByCategory}
+                  onSelectCategory={(categoryId) => navigateTo("documentList", { topicId: categoryId, post: null })}
                 />,
               )
             ) : null}
 
-            {currentView === "wikiList" ? (
+            {currentView === "documentList" ? (
               withRouteFallback(
                 <DocumentListPage
-                  category={currentGuideCategory}
-                  guides={currentGuides}
-                  onSelectGuide={(guide) => navigateTo("wikiDetail", { topicId: guide.categoryId || "", guide })}
+                  category={currentDocumentCategory}
+                  posts={currentDocumentPosts}
+                  onSelectPost={(post) => navigateTo("communityPostDetail", { topicId: selectedTopicId, post })}
+                />,
+              )
+            ) : null}
+
+            {currentView === "wikiDocs" ? (
+              withRouteFallback(
+                <WikiListPage
+                  guides={guides}
+                  wikiLoading={wikiLoading}
+                  onRefresh={() => void loadGuides()}
+                  onSelectGuide={(guide) => navigateTo("wikiDetail", { guide })}
                 />,
               )
             ) : null}

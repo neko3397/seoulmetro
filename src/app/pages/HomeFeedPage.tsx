@@ -1,4 +1,4 @@
-import { ArrowLeft, Bell, BookOpen, FileImage, FileText, Play, Sparkles, User, Video as VideoIcon } from "lucide-react";
+import { ArrowLeft, Bell, BookOpen, FileImage, FileText, FolderOpen, Play, Sparkles, User, Video as VideoIcon } from "lucide-react";
 import { useRef } from "react";
 import { UserCommunityComposer } from "../../components/UserCommunityComposer";
 import { Badge } from "../../components/ui/badge";
@@ -19,6 +19,7 @@ interface HomeFeedPageProps {
   onSubmittedComposer: () => void;
   onCloseComposer: () => void;
   onOpenEducationVideos: () => void;
+  onOpenDocuments: () => void;
   onOpenWikiDocs: () => void;
   onOpenNotices: () => void;
   onOpenPersonalizedEducation: () => void;
@@ -37,6 +38,7 @@ export function HomeFeedPage({
   onSubmittedComposer,
   onCloseComposer,
   onOpenEducationVideos,
+  onOpenDocuments,
   onOpenWikiDocs,
   onOpenNotices,
   onOpenPersonalizedEducation,
@@ -144,11 +146,11 @@ export function HomeFeedPage({
       </section>
 
       <section className="overflow-hidden rounded-[32px] bg-[linear-gradient(135deg,#0f172a_0%,#1d4ed8_46%,#38bdf8_100%)] px-6 py-0 text-white shadow-2xl shadow-blue-200/40 md:px-10">
-        <div className="mb-4 flex max-w-3xl gap-3">
+        <div className="mb-4 grid max-w-3xl grid-cols-2 gap-3 md:flex">
           <button
             type="button"
             onClick={handleOpenNotices}
-            className={`${primaryNavButtonClassName} min-w-0 flex-1`}
+            className={`${primaryNavButtonClassName} min-w-0 md:flex-1`}
             style={primaryNavButtonTextStyle}
           >
             <Bell className="h-5 w-5 shrink-0 text-slate-900" />
@@ -159,7 +161,7 @@ export function HomeFeedPage({
           <button
             type="button"
             onClick={onOpenEducationVideos}
-            className={`${primaryNavButtonClassName} min-w-0 flex-1`}
+            className={`${primaryNavButtonClassName} min-w-0 md:flex-1`}
             style={primaryNavButtonTextStyle}
           >
             <Play className="h-5 w-5 shrink-0 text-slate-900" />
@@ -169,19 +171,30 @@ export function HomeFeedPage({
           </button>
           <button
             type="button"
-            onClick={onOpenWikiDocs}
-            className={`${primaryNavButtonClassName} min-w-0 flex-1`}
+            onClick={onOpenDocuments}
+            className={`${primaryNavButtonClassName} min-w-0 md:flex-1`}
             style={primaryNavButtonTextStyle}
           >
-            <BookOpen className="h-5 w-5 shrink-0 text-slate-900" />
+            <FolderOpen className="h-5 w-5 shrink-0 text-slate-900" />
             <span className="text-sm font-medium leading-tight text-slate-900" style={primaryNavButtonTextStyle}>
               문서
             </span>
           </button>
           <button
             type="button"
+            onClick={onOpenWikiDocs}
+            className={`${primaryNavButtonClassName} min-w-0 md:flex-1`}
+            style={primaryNavButtonTextStyle}
+          >
+            <BookOpen className="h-5 w-5 shrink-0 text-slate-900" />
+            <span className="text-sm font-medium leading-tight text-slate-900" style={primaryNavButtonTextStyle}>
+              위키
+            </span>
+          </button>
+          <button
+            type="button"
             onClick={onOpenPersonalizedEducation}
-            className={`${primaryNavButtonClassName} min-w-0 flex-1`}
+            className={`${primaryNavButtonClassName} min-w-0 md:flex-1`}
             style={primaryNavButtonTextStyle}
           >
             <Sparkles className="h-5 w-5 shrink-0 text-slate-900" />
@@ -192,7 +205,7 @@ export function HomeFeedPage({
           <button
             type="button"
             onClick={onGoMyPage}
-            className={`${primaryNavButtonClassName} min-w-0 flex-1`}
+            className={`${primaryNavButtonClassName} min-w-0 md:flex-1`}
             style={primaryNavButtonTextStyle}
           >
             <User className="h-5 w-5 shrink-0 text-slate-900" />

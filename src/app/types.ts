@@ -12,10 +12,11 @@ export interface Category {
 export type ViewState =
   | "homeFeed"
   | "educationVideos"
+  | "documentDocs"
+  | "documentList"
   | "videoList"
   | "videoDetail"
   | "wikiDocs"
-  | "wikiList"
   | "wikiDetail"
   | "communityPostDetail"
   | "personalizedEducation"

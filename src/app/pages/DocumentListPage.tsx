@@ -1,14 +1,14 @@
 import { Badge } from "../../components/ui/badge";
-import { GuideCategory, GuideDetail } from "../../types/content";
+import { CommunityPost, GuideCategory } from "../../types/content";
 import { formatDateTime } from "../utils";
 
 interface DocumentListPageProps {
   category: GuideCategory | null;
-  guides: GuideDetail[];
-  onSelectGuide: (guide: GuideDetail) => void;
+  posts: CommunityPost[];
+  onSelectPost: (post: CommunityPost) => void;
 }
 
-export function DocumentListPage({ category, guides, onSelectGuide }: DocumentListPageProps) {
+export function DocumentListPage({ category, posts, onSelectPost }: DocumentListPageProps) {
   return (
     <div className="space-y-6">
       <div className="space-y-2">
@@ -18,25 +18,25 @@ export function DocumentListPage({ category, guides, onSelectGuide }: DocumentLi
       </div>
 
       <div className="grid gap-4">
-        {guides.map((guide) => (
+        {posts.map((post) => (
           <button
-            key={guide.id}
+            key={post.id}
             type="button"
-            onClick={() => onSelectGuide(guide)}
+            onClick={() => onSelectPost(post)}
             className="rounded-[24px] border bg-white p-6 text-left shadow-sm transition hover:border-blue-300 hover:shadow-md"
           >
             <div className="flex flex-wrap items-center gap-3">
-              <Badge variant="outline">v{guide.version}</Badge>
-              <span className="text-sm text-slate-500">{formatDateTime(guide.updatedAt)}</span>
+              <Badge variant="outline">문서</Badge>
+              <span className="text-sm text-slate-500">{formatDateTime(post.updatedAt)}</span>
             </div>
-            <h3 className="mt-3 text-2xl font-semibold text-slate-900">{guide.title}</h3>
-            <p className="mt-3 line-clamp-3 text-slate-600">{guide.description}</p>
+            <h3 className="mt-3 text-2xl font-semibold text-slate-900">{post.title}</h3>
+            <p className="mt-3 line-clamp-3 text-slate-600">{post.summary || post.content}</p>
             <p className="mt-4 text-sm font-medium text-blue-700">문서 읽기</p>
           </button>
         ))}
       </div>
 
-      {guides.length === 0 ? (
+      {posts.length === 0 ? (
         <div className="rounded-3xl border border-dashed bg-white px-6 py-12 text-center text-slate-500">
           등록된 문서가 없습니다.
         </div>
