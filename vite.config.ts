@@ -54,6 +54,19 @@ export default defineConfig({
             },
           },
           {
+            // Supabase Storage(PDF): signed URL/Range 요청 충돌을 막기 위해 항상 네트워크 우선
+            urlPattern: ({ url }) =>
+              /^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(url.origin) &&
+              /^\/storage\/v1\/.*\.pdf$/i.test(url.pathname),
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'supabase-storage-pdf',
+              networkTimeoutSeconds: 5,
+              cacheableResponse: { statuses: [0, 200] },
+              expiration: { maxAgeSeconds: 60 * 5, maxEntries: 50 },
+            },
+          },
+          {
             // Supabase Storage(이미지): 캐시 허용
             urlPattern: /^https:\/\/[a-z0-9-]+\.supabase\.co\/storage\/v1\/.*$/i,
             handler: 'CacheFirst',

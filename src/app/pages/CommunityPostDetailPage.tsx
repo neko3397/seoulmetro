@@ -122,12 +122,27 @@ function PdfInlineRenderer({ url, title }: PdfInlineRendererProps) {
     if (!url || !containerWidth) return;
 
     let cancelled = false;
+    const abortController = new AbortController();
     const renderPdf = async () => {
       setIsLoading(true);
       setLoadError(null);
 
       try {
-        const loadingTask = getDocument(url);
+        const response = await fetch(url, {
+          cache: "no-store",
+          signal: abortController.signal,
+        });
+        if (!response.ok) {
+          throw new Error(`Failed to fetch PDF: ${response.status}`);
+        }
+
+        const pdfBytes = await response.arrayBuffer();
+        const loadingTask = getDocument({
+          data: pdfBytes,
+          disableAutoFetch: true,
+          disableStream: true,
+          disableRange: true,
+        });
         const pdf = await loadingTask.promise;
         const renderedPages: string[] = [];
 
@@ -163,6 +178,7 @@ function PdfInlineRenderer({ url, title }: PdfInlineRendererProps) {
 
     return () => {
       cancelled = true;
+      abortController.abort();
     };
   }, [containerWidth, url]);
 
