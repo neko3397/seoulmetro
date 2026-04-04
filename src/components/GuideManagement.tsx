@@ -8,6 +8,7 @@ import { Textarea } from "./ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { apiRequest } from "../lib/api";
 import { notifyContentChanged } from "../lib/contentSync";
+import { buildGuideMarkdown, parseGuideMarkdown } from "../lib/guideMarkdown";
 
 interface GuideManagementProps {
   onUpdated: () => void;
@@ -21,17 +22,8 @@ const emptyGuide = {
   slug: "",
   isPublished: false,
   version: 1,
-  sections: [] as any[],
-};
-
-const emptySection = {
-  id: "",
-  title: "",
-  slug: "",
   markdownContent: "",
-  parentId: "",
-  sortOrder: 0,
-  depth: 0,
+  sections: [] as any[],
 };
 
 export function GuideManagement({ onUpdated }: GuideManagementProps) {
@@ -40,11 +32,14 @@ export function GuideManagement({ onUpdated }: GuideManagementProps) {
   const [loading, setLoading] = useState(true);
   const [selectedGuideId, setSelectedGuideId] = useState("");
   const [guideForm, setGuideForm] = useState(emptyGuide);
-  const [sectionForm, setSectionForm] = useState(emptySection);
 
   const selectedGuide = useMemo(
     () => guides.find((guide) => guide.id === selectedGuideId) || null,
     [guides, selectedGuideId],
+  );
+  const parsedMarkdown = useMemo(
+    () => parseGuideMarkdown(guideForm.markdownContent, { fallbackTitle: guideForm.title }),
+    [guideForm.markdownContent, guideForm.title],
   );
 
   const load = async () => {
@@ -70,6 +65,11 @@ export function GuideManagement({ onUpdated }: GuideManagementProps) {
           slug: activeGuide.slug,
           isPublished: Boolean(activeGuide.isPublished),
           version: Number(activeGuide.version || 1),
+          markdownContent: buildGuideMarkdown(
+            activeGuide.title,
+            activeGuide.description || "",
+            activeGuide.sections || [],
+          ),
           sections: activeGuide.sections || [],
         });
       } else {
@@ -100,12 +100,42 @@ export function GuideManagement({ onUpdated }: GuideManagementProps) {
         slug: selectedGuide.slug,
         isPublished: Boolean(selectedGuide.isPublished),
         version: Number(selectedGuide.version || 1),
+        markdownContent: buildGuideMarkdown(selectedGuide.title, selectedGuide.description || "", selectedGuide.sections || []),
         sections: selectedGuide.sections || [],
       });
     }
   }, [categories, selectedGuide]);
 
+  const applyMarkdown = (markdownContent: string) => {
+    const parsed = parseGuideMarkdown(markdownContent, { fallbackTitle: guideForm.title });
+    setGuideForm((prev) => ({
+      ...prev,
+      title: parsed.title || prev.title,
+      description: parsed.description || prev.description,
+      slug: parsed.title || prev.slug,
+      markdownContent,
+    }));
+  };
+
+  const handleMarkdownFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const markdownContent = await file.text();
+      applyMarkdown(markdownContent);
+    } catch (error) {
+      console.error("Failed to read markdown file:", error);
+      alert("Markdown 파일을 읽는 중 오류가 발생했습니다.");
+    } finally {
+      event.target.value = "";
+    }
+  };
+
   const handleSaveGuide = async () => {
+    if (!guideForm.markdownContent.trim()) {
+      alert("가이드북 Markdown 본문을 업로드하거나 입력하세요.");
+      return;
+    }
     try {
       const method = guideForm.id ? "PUT" : "POST";
       const path = guideForm.id ? `/guides/${guideForm.id}` : "/guides";
@@ -121,6 +151,7 @@ export function GuideManagement({ onUpdated }: GuideManagementProps) {
           slug: guideForm.slug,
           isPublished: guideForm.isPublished,
           version: guideForm.version,
+          markdownContent: guideForm.markdownContent,
         }),
       });
       const data = await response.json();
@@ -154,61 +185,6 @@ export function GuideManagement({ onUpdated }: GuideManagementProps) {
     } catch (error) {
       console.error("Failed to delete guide:", error);
       alert("가이드북 삭제 중 오류가 발생했습니다.");
-    }
-  };
-
-  const handleSaveSection = async () => {
-    if (!selectedGuideId) return;
-    try {
-      const method = sectionForm.id ? "PUT" : "POST";
-      const path = sectionForm.id ? `/guide-sections/${sectionForm.id}` : `/guides/${selectedGuideId}/sections`;
-      const response = await apiRequest(path, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          title: sectionForm.title,
-          slug: sectionForm.slug,
-          markdownContent: sectionForm.markdownContent,
-          parentId: sectionForm.parentId || null,
-          sortOrder: Number(sectionForm.sortOrder),
-          depth: Number(sectionForm.depth),
-        }),
-      });
-      const data = await response.json();
-      if (!data.success) {
-        alert(data.error || "섹션 저장에 실패했습니다.");
-        return;
-      }
-      setSectionForm(emptySection);
-      await load();
-      notifyContentChanged(["guides"]);
-      onUpdated();
-    } catch (error) {
-      console.error("Failed to save section:", error);
-      alert("섹션 저장 중 오류가 발생했습니다.");
-    }
-  };
-
-  const handleDeleteSection = async (sectionId: string) => {
-    if (!confirm("정말로 이 섹션을 삭제하시겠습니까?")) return;
-    try {
-      const response = await apiRequest(`/guide-sections/${sectionId}`, {
-        method: "DELETE",
-      });
-      const data = await response.json();
-      if (!data.success) {
-        alert(data.error || "섹션 삭제에 실패했습니다.");
-        return;
-      }
-      if (sectionForm.id === sectionId) setSectionForm(emptySection);
-      await load();
-      notifyContentChanged(["guides"]);
-      onUpdated();
-    } catch (error) {
-      console.error("Failed to delete section:", error);
-      alert("섹션 삭제 중 오류가 발생했습니다.");
     }
   };
 
@@ -357,122 +333,54 @@ export function GuideManagement({ onUpdated }: GuideManagementProps) {
       <div className="space-y-6">
         <Card>
           <CardHeader>
-            <CardTitle>목차 및 섹션</CardTitle>
-            <CardDescription>섹션 추가, 순서 조정, Markdown 본문 편집을 수행합니다.</CardDescription>
+            <CardTitle>Markdown 업로드</CardTitle>
+            <CardDescription>마크다운 문서만 업로드하면 목차와 섹션이 자동 생성됩니다.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {!selectedGuide ? (
-              <div className="text-sm text-muted-foreground">섹션을 편집할 가이드북을 선택하세요.</div>
-            ) : (
-              <>
+            <div className="space-y-2">
+              <Label htmlFor="guide-markdown-file">Markdown 파일</Label>
+              <Input id="guide-markdown-file" type="file" accept=".md,.markdown,text/markdown,text/plain" onChange={handleMarkdownFileChange} />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="guide-markdown-content">Markdown 본문</Label>
+              <Textarea
+                id="guide-markdown-content"
+                rows={18}
+                value={guideForm.markdownContent}
+                onChange={(e) => setGuideForm((prev) => ({ ...prev, markdownContent: e.target.value }))}
+                placeholder="# 문서 제목&#10;&#10;## 1장&#10;본문..."
+              />
+            </div>
+
+            <div className="rounded-md border p-4 space-y-3">
+              <div className="font-medium">자동 생성될 목차</div>
+              <div className="text-sm text-muted-foreground">
+                <code>##</code>, <code>###</code> 같은 제목 구조를 읽어 섹션과 들여쓰기를 자동으로 만듭니다.
+              </div>
+              {parsedMarkdown.sections.length === 0 ? (
+                <div className="text-sm text-muted-foreground">생성 가능한 섹션이 없습니다.</div>
+              ) : (
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>제목</TableHead>
                       <TableHead>깊이</TableHead>
                       <TableHead>순서</TableHead>
-                      <TableHead></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(selectedGuide.sections || []).map((section: any) => (
-                      <TableRow key={section.id}>
-                        <TableCell>{section.title}</TableCell>
+                    {parsedMarkdown.sections.map((section) => (
+                      <TableRow key={`${section.slug}-${section.sortOrder}`}>
+                        <TableCell style={{ paddingLeft: `${section.depth * 18 + 16}px` }}>{section.title}</TableCell>
                         <TableCell>{section.depth}</TableCell>
-                        <TableCell>{section.sortOrder}</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() =>
-                                setSectionForm({
-                                  id: section.id,
-                                  title: section.title,
-                                  slug: section.slug,
-                                  markdownContent: section.markdownContent,
-                                  parentId: section.parentId || "",
-                                  sortOrder: section.sortOrder,
-                                  depth: section.depth,
-                                })
-                              }
-                            >
-                              수정
-                            </Button>
-                            <Button variant="outline" size="sm" onClick={() => handleDeleteSection(section.id)}>
-                              삭제
-                            </Button>
-                          </div>
-                        </TableCell>
+                        <TableCell>{section.sortOrder + 1}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
-
-                <div className="rounded-md border p-4 space-y-4">
-                  <div className="font-medium">{sectionForm.id ? "섹션 수정" : "섹션 추가"}</div>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div>
-                      <Label htmlFor="section-title">제목</Label>
-                      <Input
-                        id="section-title"
-                        value={sectionForm.title}
-                        onChange={(e) => setSectionForm((prev) => ({ ...prev, title: e.target.value }))}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="section-slug">슬러그</Label>
-                      <Input
-                        id="section-slug"
-                        value={sectionForm.slug}
-                        onChange={(e) => setSectionForm((prev) => ({ ...prev, slug: e.target.value }))}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="section-parent">부모 섹션 ID</Label>
-                      <Input
-                        id="section-parent"
-                        value={sectionForm.parentId}
-                        onChange={(e) => setSectionForm((prev) => ({ ...prev, parentId: e.target.value }))}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="section-depth">깊이</Label>
-                      <Input
-                        id="section-depth"
-                        type="number"
-                        value={sectionForm.depth}
-                        onChange={(e) => setSectionForm((prev) => ({ ...prev, depth: Number(e.target.value || 0) }))}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="section-order">정렬 순서</Label>
-                      <Input
-                        id="section-order"
-                        type="number"
-                        value={sectionForm.sortOrder}
-                        onChange={(e) => setSectionForm((prev) => ({ ...prev, sortOrder: Number(e.target.value || 0) }))}
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <Label htmlFor="markdown-content">Markdown 본문</Label>
-                    <Textarea
-                      id="markdown-content"
-                      rows={10}
-                      value={sectionForm.markdownContent}
-                      onChange={(e) => setSectionForm((prev) => ({ ...prev, markdownContent: e.target.value }))}
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <Button onClick={handleSaveSection}>섹션 저장</Button>
-                    <Button variant="outline" onClick={() => setSectionForm(emptySection)}>
-                      초기화
-                    </Button>
-                  </div>
-                </div>
-              </>
-            )}
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>

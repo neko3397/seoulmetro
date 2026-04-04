@@ -4,6 +4,7 @@ import { cors } from "npm:hono/cors";
 import { bearerAuth } from "npm:hono/bearer-auth";
 import { logger } from "npm:hono/logger";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { parseGuideMarkdown } from "../../../lib/guideMarkdown.ts";
 
 const app = new Hono();
 
@@ -1123,6 +1124,33 @@ async function fetchGuides(includeDrafts = true) {
         updatedAt: section.updated_at,
       })),
   }));
+}
+
+async function replaceGuideSectionsFromMarkdown(guideId: string, markdownContent: string) {
+  const parsed = parseGuideMarkdown(markdownContent);
+  const sectionIds = parsed.sections.map(() => makeId("section"));
+  const rows = parsed.sections.map((section, index) => ({
+    id: sectionIds[index],
+    guide_id: guideId,
+    parent_id: section.parentOrder !== null ? sectionIds[section.parentOrder] : null,
+    title: section.title,
+    slug: slugify(section.slug || section.title),
+    markdown_content: section.markdownContent || "",
+    sort_order: section.sortOrder,
+    depth: section.depth,
+    created_at: NOW(),
+    updated_at: NOW(),
+  }));
+
+  const { error: deleteError } = await supabase.from("guide_sections").delete().eq("guide_id", guideId);
+  if (deleteError) throw deleteError;
+
+  if (rows.length > 0) {
+    const { error: insertError } = await supabase.from("guide_sections").insert(rows);
+    if (insertError) throw insertError;
+  }
+
+  return parsed;
 }
 
 async function fetchPersonalizedRecommendationRules() {
@@ -2508,21 +2536,27 @@ app.delete("/make-server-a8898ff1/document-categories/:categoryId", async (c: an
 app.post("/make-server-a8898ff1/guides", async (c: any) => {
   try {
     const body = await c.req.json();
+    const hasMarkdownContent = Object.prototype.hasOwnProperty.call(body, "markdownContent");
+    const parsedGuide = hasMarkdownContent ? parseGuideMarkdown(String(body.markdownContent || "")) : null;
     const categories = await listGuideCategories();
     const categoryId = body.categoryId || categories[0]?.id || null;
     const row = {
       id: makeId("guide"),
       category_id: categoryId,
-      title: String(body.title || "").trim(),
-      description: body.description || null,
+      title: String(body.title || parsedGuide?.title || "").trim(),
+      description: body.description || parsedGuide?.description || null,
       slug: slugify(body.slug || body.title),
       is_published: Boolean(body.isPublished),
       version: Number(body.version || 1),
       created_at: NOW(),
       updated_at: NOW(),
     };
+    row.slug = slugify(body.slug || row.title);
     const { error } = await supabase.from("guides").insert(row);
     if (error) throw error;
+    if (hasMarkdownContent) {
+      await replaceGuideSectionsFromMarkdown(row.id, String(body.markdownContent || ""));
+    }
     return c.json({ success: true, guide: (await fetchGuides(true)).find((guide) => guide.id === row.id) });
   } catch (error) {
     console.error("Create guide error:", error);
@@ -2545,21 +2579,26 @@ app.put("/make-server-a8898ff1/guides/:guideId", async (c: any) => {
   try {
     const body = await c.req.json();
     const guideId = c.req.param("guideId");
+    const hasMarkdownContent = Object.prototype.hasOwnProperty.call(body, "markdownContent");
+    const parsedGuide = hasMarkdownContent ? parseGuideMarkdown(String(body.markdownContent || "")) : null;
     const categories = await listGuideCategories();
     const categoryId = body.categoryId || categories[0]?.id || null;
     const { error } = await supabase
       .from("guides")
       .update({
         category_id: categoryId,
-        title: String(body.title || "").trim(),
-        description: body.description || null,
-        slug: slugify(body.slug || body.title),
+        title: String(body.title || parsedGuide?.title || "").trim(),
+        description: body.description || parsedGuide?.description || null,
+        slug: slugify(body.slug || body.title || parsedGuide?.title),
         is_published: Boolean(body.isPublished),
         version: Number(body.version || 1),
         updated_at: NOW(),
       })
       .eq("id", guideId);
     if (error) throw error;
+    if (hasMarkdownContent) {
+      await replaceGuideSectionsFromMarkdown(guideId, String(body.markdownContent || ""));
+    }
     return c.json({ success: true, guide: (await fetchGuides(true)).find((guide) => guide.id === guideId) });
   } catch (error) {
     console.error("Update guide error:", error);

@@ -15,8 +15,8 @@ export function WikiListPage({ guides, wikiLoading, onRefresh, onSelectGuide }: 
     <div className="space-y-6">
       <div className="flex items-end justify-between gap-4">
         <div>
-          <Badge variant="secondary">위키문서</Badge>
-          <h2 className="mt-2 text-3xl font-bold text-slate-900">위키 문서</h2>
+          <Badge variant="secondary">사내규정</Badge>
+          <h2 className="mt-2 text-3xl font-bold text-slate-900">사내규정</h2>
         </div>
         <Button variant="outline" onClick={onRefresh} disabled={wikiLoading}>
           {wikiLoading ? "불러오는 중..." : "새로고침"}

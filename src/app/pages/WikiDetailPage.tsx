@@ -37,7 +37,7 @@ export function WikiDetailPage({ guide }: WikiDetailPageProps) {
 
       <div className="space-y-6">
         <div className="space-y-3">
-          <Badge variant="secondary">위키 상세</Badge>
+          <Badge variant="secondary">사내규정</Badge>
           <h2 className="text-3xl font-bold text-slate-900">{guide.title}</h2>
           <p className="text-slate-600">{guide.description}</p>
           <p className="text-sm text-slate-500">{formatDateTime(guide.updatedAt)}</p>

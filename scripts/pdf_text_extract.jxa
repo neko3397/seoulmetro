@@ -1,0 +1,25 @@
+ObjC.import('Foundation')
+ObjC.import('PDFKit')
+
+function run(argv) {
+  if (argv.length === 0) {
+    return 'usage: osascript -l JavaScript pdf_text_extract.jxa /path/to/file.pdf'
+  }
+
+  const path = argv[0]
+  const url = $.NSURL.fileURLWithPath(path)
+  const doc = $.PDFDocument.alloc.initWithURL(url)
+  if (!doc) {
+    return 'OPEN_FAIL'
+  }
+
+  const parts = []
+  const pageCount = doc.pageCount
+  for (let index = 0; index < pageCount; index += 1) {
+    const page = doc.pageAtIndex(index)
+    const text = page ? ObjC.unwrap(page.string) : ''
+    parts.push(`[[PAGE ${index + 1}]]`)
+    parts.push(text || '')
+  }
+  return parts.join('\n')
+}

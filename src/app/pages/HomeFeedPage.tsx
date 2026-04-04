@@ -188,7 +188,7 @@ export function HomeFeedPage({
           >
             <BookOpen className="h-5 w-5 shrink-0 text-slate-900" />
             <span className="text-sm font-medium leading-tight text-slate-900" style={primaryNavButtonTextStyle}>
-              위키
+              사내규정
             </span>
           </button>
           <button
