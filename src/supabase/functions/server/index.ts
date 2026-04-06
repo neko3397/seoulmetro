@@ -486,9 +486,7 @@ function mapGuideCategory(row: any) {
   return {
     id: row.id,
     title: row.title,
-    subtitle: row.subtitle,
     image: row.image,
-    description: row.description,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -629,7 +627,7 @@ async function listVideos(categoryId: string) {
 async function listGuideCategories() {
   const { data, error } = await supabase
     .from("guide_categories")
-    .select("id, title, subtitle, image, description, created_at, updated_at")
+    .select("*")
     .order("created_at", { ascending: true });
   if (error) throw error;
   return (data || []).map(mapGuideCategory);
@@ -1085,7 +1083,7 @@ async function fetchGuides(includeDrafts = true) {
   const guideCategoryMap = new Map(guideCategories.map((category) => [category.id, category]));
   let query = supabase
     .from("guides")
-    .select("id, category_id, title, description, slug, is_published, version, created_at, updated_at")
+    .select("*")
     .order("updated_at", { ascending: false });
   if (!includeDrafts) query = query.eq("is_published", true);
   const { data: guides, error } = await query;
@@ -1093,7 +1091,7 @@ async function fetchGuides(includeDrafts = true) {
   const guideIds = (guides || []).map((guide) => guide.id);
   const { data: sections, error: sectionError } = await supabase
     .from("guide_sections")
-    .select("id, guide_id, parent_id, title, slug, markdown_content, sort_order, depth, created_at, updated_at")
+    .select("*")
     .in("guide_id", guideIds.length ? guideIds : ["__none__"])
     .order("sort_order", { ascending: true });
   if (sectionError) throw sectionError;
@@ -1118,8 +1116,8 @@ async function fetchGuides(includeDrafts = true) {
         title: section.title,
         slug: section.slug,
         markdownContent: section.markdown_content,
-        sortOrder: section.sort_order,
-        depth: section.depth,
+        sortOrder: Number(section.sort_order || 0),
+        depth: Number(section.depth || 0),
         createdAt: section.created_at,
         updatedAt: section.updated_at,
       })),
@@ -1151,6 +1149,22 @@ async function replaceGuideSectionsFromMarkdown(guideId: string, markdownContent
   }
 
   return parsed;
+}
+
+function resolveGuideMetadata(
+  body: Record<string, any>,
+  parsedGuide: ReturnType<typeof parseGuideMarkdown> | null,
+) {
+  const explicitTitle = String(body.title || "").trim();
+  const explicitDescription = typeof body.description === "string" ? body.description.trim() : "";
+  const title = explicitTitle || String(parsedGuide?.title || "").trim();
+  const description = explicitDescription || parsedGuide?.description || null;
+
+  return {
+    title,
+    description,
+    slug: slugify(title),
+  };
 }
 
 async function fetchPersonalizedRecommendationRules() {
@@ -2470,13 +2484,13 @@ app.get("/make-server-a8898ff1/document-categories", async (c: any) => {
 
 app.post("/make-server-a8898ff1/document-categories", async (c: any) => {
   try {
-    const { title, subtitle, image, description } = await c.req.json();
+    const { title, image } = await c.req.json();
     const row = {
       id: makeId("doccat"),
       title: String(title || "").trim(),
-      subtitle: subtitle || null,
       image: image || null,
-      description: description || null,
+      subtitle: null,
+      description: null,
       created_at: NOW(),
       updated_at: NOW(),
     };
@@ -2492,14 +2506,14 @@ app.post("/make-server-a8898ff1/document-categories", async (c: any) => {
 app.put("/make-server-a8898ff1/document-categories/:categoryId", async (c: any) => {
   try {
     const categoryId = c.req.param("categoryId");
-    const { title, subtitle, image, description } = await c.req.json();
+    const { title, image } = await c.req.json();
     const { error } = await supabase
       .from("guide_categories")
       .update({
         title: String(title || "").trim(),
-        subtitle: subtitle || null,
         image: image || null,
-        description: description || null,
+        subtitle: null,
+        description: null,
         updated_at: NOW(),
       })
       .eq("id", categoryId);
@@ -2538,20 +2552,20 @@ app.post("/make-server-a8898ff1/guides", async (c: any) => {
     const body = await c.req.json();
     const hasMarkdownContent = Object.prototype.hasOwnProperty.call(body, "markdownContent");
     const parsedGuide = hasMarkdownContent ? parseGuideMarkdown(String(body.markdownContent || "")) : null;
+    const metadata = resolveGuideMetadata(body, parsedGuide);
     const categories = await listGuideCategories();
     const categoryId = body.categoryId || categories[0]?.id || null;
     const row = {
       id: makeId("guide"),
       category_id: categoryId,
-      title: String(body.title || parsedGuide?.title || "").trim(),
-      description: body.description || parsedGuide?.description || null,
-      slug: slugify(body.slug || body.title),
+      title: metadata.title,
+      description: metadata.description,
+      slug: metadata.slug,
       is_published: Boolean(body.isPublished),
       version: Number(body.version || 1),
       created_at: NOW(),
       updated_at: NOW(),
     };
-    row.slug = slugify(body.slug || row.title);
     const { error } = await supabase.from("guides").insert(row);
     if (error) throw error;
     if (hasMarkdownContent) {
@@ -2581,15 +2595,16 @@ app.put("/make-server-a8898ff1/guides/:guideId", async (c: any) => {
     const guideId = c.req.param("guideId");
     const hasMarkdownContent = Object.prototype.hasOwnProperty.call(body, "markdownContent");
     const parsedGuide = hasMarkdownContent ? parseGuideMarkdown(String(body.markdownContent || "")) : null;
+    const metadata = resolveGuideMetadata(body, parsedGuide);
     const categories = await listGuideCategories();
     const categoryId = body.categoryId || categories[0]?.id || null;
     const { error } = await supabase
       .from("guides")
       .update({
         category_id: categoryId,
-        title: String(body.title || parsedGuide?.title || "").trim(),
-        description: body.description || parsedGuide?.description || null,
-        slug: slugify(body.slug || body.title || parsedGuide?.title),
+        title: metadata.title,
+        description: metadata.description,
+        slug: metadata.slug,
         is_published: Boolean(body.isPublished),
         version: Number(body.version || 1),
         updated_at: NOW(),

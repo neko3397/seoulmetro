@@ -119,6 +119,18 @@ export default function App() {
   const [detailLoading, setDetailLoading] = useState(false);
   const initializedHistoryRef = useRef(false);
   const currentUserRef = useRef(currentUser);
+  const currentNavigationStateRef = useRef<NavigationState | null>(
+    restoredNavigationState.view
+      ? {
+          view: restoredNavigationState.view,
+          depth: typeof restoredNavigationState.depth === "number" ? restoredNavigationState.depth : 0,
+          topicId: restoredNavigationState.topicId,
+          video: (restoredNavigationState.video as Video) || null,
+          guide: (restoredNavigationState.guide as GuideDetail) || null,
+          post: (restoredNavigationState.post as CommunityPost) || null,
+        }
+      : null,
+  );
   const lastNavigationRequestRef = useRef<{ state: Partial<NavigationState>; timestamp: number } | null>(null);
   const navigationStackRef = useRef<NavigationState[]>(readPersistedNavigationStack());
 
@@ -186,12 +198,46 @@ export default function App() {
   }, [adminUser, currentView]);
 
   const applyNavigationState = (state: NavigationState) => {
+    currentNavigationStateRef.current = state;
     setCurrentView(state.view);
     setSelectedTopicId(state.topicId || "");
     setSelectedVideo(state.video || null);
     setSelectedGuide(state.guide || null);
     setSelectedPost(state.post || null);
     persistNavigationState(state);
+  };
+
+  const getBackNavigationOffset = () => {
+    const stack = navigationStackRef.current;
+    if (stack.length <= 1) {
+      return 0;
+    }
+
+    const currentState = stack[stack.length - 1];
+    let offset = 1;
+
+    for (let index = stack.length - 2; index >= 0; index -= 1) {
+      if (!isSameNavigationState(currentState, stack[index])) {
+        break;
+      }
+      offset += 1;
+    }
+
+    return offset;
+  };
+
+  const syncNavigationStack = (state: NavigationState) => {
+    const existingIndex = navigationStackRef.current.findLastIndex((entry) => isSameNavigationState(entry, state));
+    if (existingIndex >= 0) {
+      const nextStack = navigationStackRef.current.slice(0, existingIndex + 1);
+      navigationStackRef.current = nextStack;
+      persistNavigationStack(nextStack);
+      return;
+    }
+
+    const nextStack = state.depth <= 0 ? [state] : [...navigationStackRef.current, state];
+    navigationStackRef.current = nextStack;
+    persistNavigationStack(nextStack);
   };
 
   const navigateTo = (
@@ -286,21 +332,24 @@ export default function App() {
         return;
       }
 
-      const existingIndex = navigationStackRef.current.findIndex((entry) => isSameNavigationState(entry, state));
-      if (existingIndex >= 0) {
-        const nextStack = navigationStackRef.current.slice(0, existingIndex + 1);
-        navigationStackRef.current = nextStack;
-        persistNavigationStack(nextStack);
-      } else {
-        const nextStack = state.depth <= 0 ? [state] : [...navigationStackRef.current, state];
-        navigationStackRef.current = nextStack;
-        persistNavigationStack(nextStack);
-      }
-
-      applyNavigationState({
+      const normalizedState = {
         ...state,
         depth: state.depth ?? 0,
-      });
+      };
+      const currentState = currentNavigationStateRef.current;
+
+      if (currentState && isSameNavigationState(currentState, normalizedState) && normalizedState.depth !== currentState.depth) {
+        if (normalizedState.depth < currentState.depth) {
+          history.back();
+          return;
+        }
+
+        history.forward();
+        return;
+      }
+
+      syncNavigationStack(normalizedState);
+      applyNavigationState(normalizedState);
     };
 
     window.addEventListener("popstate", handlePopState);
@@ -693,9 +742,10 @@ export default function App() {
 
   const handleBack = () => {
     const currentHistoryState = window.history.state as NavigationState | null;
+    const backOffset = getBackNavigationOffset();
 
     if ((currentHistoryState?.depth ?? 0) > 0) {
-      history.back();
+      history.go(backOffset > 0 ? -backOffset : -1);
       return;
     }
 

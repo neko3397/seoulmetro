@@ -14,7 +14,7 @@ export function DocumentListPage({ category, posts, onSelectPost }: DocumentList
       <div className="space-y-2">
         <Badge variant="secondary">문서 목록</Badge>
         <h2 className="text-3xl font-bold text-slate-900">{category?.title || "문서"}</h2>
-        <p className="text-slate-600">{category?.description || "카테고리에 속한 문서를 확인하세요."}</p>
+        <p className="text-slate-600">카테고리에 속한 문서를 확인하세요.</p>
       </div>
 
       <div className="grid gap-4">

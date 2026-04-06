@@ -1,0 +1,242 @@
+ObjC.import('Foundation')
+ObjC.import('PDFKit')
+ObjC.import('AppKit')
+
+function fail(message) {
+  const text = `${message}\n`
+  $.NSFileHandle.fileHandleWithStandardError.writeData(
+    $.NSString.alloc.initWithUTF8String(text).dataUsingEncoding($.NSUTF8StringEncoding)
+  )
+  $.exit(1)
+}
+
+function usage() {
+  return [
+    'usage:',
+    '  osascript -l JavaScript scripts/pdf_tool.jxa analyze /path/to/file.pdf',
+    '  osascript -l JavaScript scripts/pdf_tool.jxa render /path/to/file.pdf /path/to/output_dir page_spec [scale]',
+    '',
+    'page_spec examples:',
+    '  1',
+    '  1,2,5',
+    '  90-100',
+    '  87,89-92',
+  ].join('\n')
+}
+
+function unwrap(value, fallback = '') {
+  return value === undefined || value === null ? fallback : ObjC.unwrap(value)
+}
+
+function toJsNumber(value) {
+  return Number(ObjC.unwrap(value))
+}
+
+function loadDocument(pdfPath) {
+  const url = $.NSURL.fileURLWithPath(pdfPath)
+  const doc = $.PDFDocument.alloc.initWithURL(url)
+  if (!doc) {
+    fail(`failed to open PDF: ${pdfPath}`)
+  }
+  return doc
+}
+
+function normalizeText(text) {
+  return String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+}
+
+function outlineRecord(doc, item) {
+  const children = []
+  const childCount = Number(item.numberOfChildren || 0)
+  for (let index = 0; index < childCount; index += 1) {
+    const child = item.childAtIndex(index)
+    if (child) {
+      children.push(outlineRecord(doc, child))
+    }
+  }
+
+  let pageIndex = null
+  const destination = item.destination
+  if (destination) {
+    const page = destination.page
+    if (page) {
+      const rawIndex = Number(doc.indexForPage(page))
+      if (rawIndex >= 0) {
+        pageIndex = rawIndex + 1
+      }
+    }
+  }
+
+  return {
+    title: String(unwrap(item.label, '')),
+    pageIndex,
+    children,
+  }
+}
+
+function collectOutline(doc) {
+  const root = doc.outlineRoot
+  if (!root) {
+    return []
+  }
+
+  const records = []
+  const count = Number(root.numberOfChildren || 0)
+  for (let index = 0; index < count; index += 1) {
+    const child = root.childAtIndex(index)
+    if (child) {
+      records.push(outlineRecord(doc, child))
+    }
+  }
+  return records
+}
+
+function analyze(pdfPath) {
+  const doc = loadDocument(pdfPath)
+  const pageCount = Number(doc.pageCount || 0)
+  const pages = []
+
+  for (let index = 0; index < pageCount; index += 1) {
+    const page = doc.pageAtIndex(index)
+    if (!page) {
+      continue
+    }
+    const bounds = page.boundsForBox($.kPDFDisplayBoxMediaBox)
+    pages.push({
+      index: index + 1,
+      width: toJsNumber(bounds.size.width),
+      height: toJsNumber(bounds.size.height),
+      text: normalizeText(unwrap(page.string, '')),
+    })
+  }
+
+  return {
+    pdfPath,
+    pageCount,
+    pages,
+    outline: collectOutline(doc),
+  }
+}
+
+function parsePageSpec(pageSpec) {
+  const pages = new Set()
+  const segments = String(pageSpec || '').split(',')
+
+  for (const rawSegment of segments) {
+    const segment = rawSegment.trim()
+    if (!segment) {
+      continue
+    }
+
+    if (segment.includes('-')) {
+      const parts = segment.split('-').map((part) => part.trim())
+      if (parts.length !== 2) {
+        fail(`invalid page range: ${segment}`)
+      }
+      const start = Number(parts[0])
+      const end = Number(parts[1])
+      if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start) {
+        fail(`invalid page range: ${segment}`)
+      }
+      for (let page = start; page <= end; page += 1) {
+        pages.add(page)
+      }
+    } else {
+      const page = Number(segment)
+      if (!Number.isInteger(page) || page < 1) {
+        fail(`invalid page: ${segment}`)
+      }
+      pages.add(page)
+    }
+  }
+
+  return Array.from(pages).sort((a, b) => a - b)
+}
+
+function ensureDirectory(dirPath) {
+  $.NSFileManager.defaultManager.createDirectoryAtPathWithIntermediateDirectoriesAttributesError(
+    dirPath,
+    true,
+    $(),
+    null
+  )
+}
+
+function render(pdfPath, outputDir, pageSpec, scaleValue) {
+  const doc = loadDocument(pdfPath)
+  const pageIndexes = parsePageSpec(pageSpec)
+  const scale = scaleValue ? Number(scaleValue) : 2
+  if (!Number.isFinite(scale) || scale <= 0) {
+    fail(`invalid scale: ${scaleValue}`)
+  }
+
+  ensureDirectory(outputDir)
+  const results = []
+
+  for (const pageIndex of pageIndexes) {
+    const page = doc.pageAtIndex(pageIndex - 1)
+    if (!page) {
+      fail(`invalid page index: ${pageIndex}`)
+    }
+
+    const bounds = page.boundsForBox($.kPDFDisplayBoxMediaBox)
+    const width = Math.ceil(toJsNumber(bounds.size.width) * scale)
+    const height = Math.ceil(toJsNumber(bounds.size.height) * scale)
+    const image = page.thumbnailOfSizeForBox($.NSMakeSize(width, height), $.kPDFDisplayBoxMediaBox)
+    if (!image) {
+      fail(`failed to render page ${pageIndex}`)
+    }
+
+    const tiff = image.TIFFRepresentation
+    const bitmap = $.NSBitmapImageRep.imageRepWithData(tiff)
+    if (!bitmap) {
+      fail(`failed to create bitmap for page ${pageIndex}`)
+    }
+    const pngData = bitmap.representationUsingTypeProperties(
+      $.NSBitmapImageFileTypePNG,
+      $.NSDictionary.dictionary
+    )
+    if (!pngData) {
+      fail(`failed to encode page ${pageIndex} as PNG`)
+    }
+
+    const filename = `page-${String(pageIndex).padStart(3, '0')}.png`
+    const outputPath = `${outputDir}/${filename}`
+    const wrote = pngData.writeToFileAtomically(outputPath, true)
+    if (!wrote) {
+      fail(`failed to write ${outputPath}`)
+    }
+
+    results.push({
+      pageIndex,
+      outputPath,
+    })
+  }
+
+  return results
+}
+
+function run(argv) {
+  if (argv.length === 0) {
+    return usage()
+  }
+
+  const [command, ...args] = argv
+  let result = null
+
+  if (command === 'analyze') {
+    if (args.length !== 1) {
+      fail(usage())
+    }
+    result = analyze(args[0])
+  } else if (command === 'render') {
+    if (args.length !== 3 && args.length !== 4) {
+      fail(usage())
+    }
+    result = render(args[0], args[1], args[2], args[3])
+  } else {
+    fail(`unknown command: ${command}\n\n${usage()}`)
+  }
+
+  return JSON.stringify(result, null, 2)
+}

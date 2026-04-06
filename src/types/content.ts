@@ -76,9 +76,7 @@ export interface GuideSection {
 export interface GuideCategory {
   id: string;
   title: string;
-  subtitle?: string | null;
   image?: string | null;
-  description?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }

@@ -25,6 +25,12 @@ interface WorkingSection {
 
 const TOC_TITLE = "목차";
 
+export function normalizeGuideMarkdown(markdown: string) {
+  return String(markdown || "")
+    .replace(/^\uFEFF/, "")
+    .replace(/\r\n?/g, "\n");
+}
+
 function slugify(value: string, fallback: string) {
   return (
     String(value || "")
@@ -72,7 +78,7 @@ function makeUniqueSlug(title: string, index: number, usedSlugs: Map<string, num
 }
 
 export function parseGuideMarkdown(markdown: string, options: ParseGuideMarkdownOptions = {}): ParsedGuideDocument {
-  const normalized = String(markdown || "").replace(/\r\n/g, "\n");
+  const normalized = normalizeGuideMarkdown(markdown);
   const lines = normalized.split("\n");
   const fallbackTitle = String(options.fallbackTitle || "").trim() || "가이드북";
 
@@ -134,15 +140,22 @@ export function parseGuideMarkdown(markdown: string, options: ParseGuideMarkdown
 
   pushCurrentSection();
 
+  const preambleContent = trimBlankLines(preambleLines.join("\n"));
+
+  if (preambleContent) {
+    workingSections.unshift({
+      level: 2,
+      title: workingSections.length > 0 ? "개요" : "본문",
+      markdownContent: preambleContent,
+    });
+  }
+
   if (workingSections.length === 0) {
-    const fallbackContent = trimBlankLines(preambleLines.join("\n"));
-    if (fallbackContent) {
-      workingSections.push({
-        level: 2,
-        title: "본문",
-        markdownContent: fallbackContent,
-      });
-    }
+    workingSections.push({
+      level: 2,
+      title: "본문",
+      markdownContent: "",
+    });
   }
 
   const baseLevel = workingSections.reduce((min, section) => Math.min(min, section.level), Number.POSITIVE_INFINITY);

@@ -63,6 +63,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build"
+    "build": "vite build",
+    "pdf:convert": "node scripts/convert-pdf-to-md.mjs"
   }
 }

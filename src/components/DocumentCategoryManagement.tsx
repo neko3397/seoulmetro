@@ -9,16 +9,13 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
-import { Textarea } from "./ui/textarea";
 
 const FALLBACK_IMAGE = "https://via.placeholder.com/400x300/e2e8f0/0f172a?text=Document";
 
 interface DocumentCategory {
   id: string;
   title: string;
-  subtitle: string;
   image: string;
-  description: string;
 }
 
 interface DocumentCategoryManagementProps {
@@ -35,9 +32,7 @@ export function DocumentCategoryManagement({ onUpdated }: DocumentCategoryManage
   const [imagePreview, setImagePreview] = useState("");
   const [formData, setFormData] = useState({
     title: "",
-    subtitle: "",
     image: "",
-    description: "",
   });
 
   useEffect(() => {
@@ -85,9 +80,7 @@ export function DocumentCategoryManagement({ onUpdated }: DocumentCategoryManage
     setImagePreview("");
     setFormData({
       title: "",
-      subtitle: "",
       image: "",
-      description: "",
     });
   };
 
@@ -97,9 +90,7 @@ export function DocumentCategoryManagement({ onUpdated }: DocumentCategoryManage
     setImagePreview(category.image || "");
     setFormData({
       title: category.title,
-      subtitle: category.subtitle || "",
       image: category.image || "",
-      description: category.description || "",
     });
     setIsDialogOpen(true);
   };
@@ -199,15 +190,6 @@ export function DocumentCategoryManagement({ onUpdated }: DocumentCategoryManage
                   />
                 </div>
                 <div>
-                  <Label htmlFor="document-category-subtitle">부제목</Label>
-                  <Input
-                    id="document-category-subtitle"
-                    value={formData.subtitle}
-                    onChange={(event) => setFormData((prev) => ({ ...prev, subtitle: event.target.value }))}
-                    required
-                  />
-                </div>
-                <div>
                   <Label htmlFor="document-category-image">카테고리 이미지</Label>
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
@@ -242,16 +224,6 @@ export function DocumentCategoryManagement({ onUpdated }: DocumentCategoryManage
                     ) : null}
                   </div>
                 </div>
-                <div>
-                  <Label htmlFor="document-category-description">설명</Label>
-                  <Textarea
-                    id="document-category-description"
-                    rows={3}
-                    value={formData.description}
-                    onChange={(event) => setFormData((prev) => ({ ...prev, description: event.target.value }))}
-                    required
-                  />
-                </div>
                 <DialogFooter>
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isUploading}>
                     취소
@@ -277,18 +249,16 @@ export function DocumentCategoryManagement({ onUpdated }: DocumentCategoryManage
         <div className="rounded-md border">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>이미지</TableHead>
-                <TableHead>제목</TableHead>
-                <TableHead>부제목</TableHead>
-                <TableHead>설명</TableHead>
-                <TableHead>작업</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+                <TableRow>
+                  <TableHead>이미지</TableHead>
+                  <TableHead>제목</TableHead>
+                  <TableHead>작업</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
               {categories.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="py-8 text-center text-gray-500">
+                  <TableCell colSpan={3} className="py-8 text-center text-gray-500">
                     <FolderOpen className="mx-auto mb-4 h-12 w-12 text-gray-300" />
                     <p>등록된 문서 카테고리가 없습니다.</p>
                   </TableCell>
@@ -300,12 +270,6 @@ export function DocumentCategoryManagement({ onUpdated }: DocumentCategoryManage
                       <img src={category.image || FALLBACK_IMAGE} alt={category.title} className="h-12 w-16 rounded object-cover" />
                     </TableCell>
                     <TableCell className="font-medium">{category.title}</TableCell>
-                    <TableCell className="text-gray-600">{category.subtitle}</TableCell>
-                    <TableCell className="max-w-xs">
-                      <div className="truncate text-sm text-gray-600" title={category.description}>
-                        {category.description}
-                      </div>
-                    </TableCell>
                     <TableCell>
                       <div className="flex items-center space-x-2">
                         <Button variant="outline" size="sm" onClick={() => window.open(category.image, "_blank")}>

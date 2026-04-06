@@ -1,7 +1,7 @@
 import { GuideDetail } from "../../types/content";
 import { Badge } from "../../components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
-import { formatDateTime, markdownToPlainText } from "../utils";
+import { formatDateTime, markdownToHtml } from "../utils";
 
 interface WikiDetailPageProps {
   guide: GuideDetail | null;
@@ -49,9 +49,10 @@ export function WikiDetailPage({ guide }: WikiDetailPageProps) {
               <CardTitle>{section.title}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="whitespace-pre-wrap leading-relaxed text-slate-700">
-                {markdownToPlainText(section.markdownContent)}
-              </div>
+              <div
+                className="space-y-4 leading-relaxed text-slate-700 [&_a]:break-all [&_blockquote]:my-4 [&_code]:font-mono [&_h2]:mt-8 [&_h2]:text-2xl [&_h2]:font-semibold [&_h3]:mt-6 [&_h3]:text-xl [&_h3]:font-semibold [&_h4]:mt-5 [&_h4]:text-lg [&_h4]:font-semibold [&_li]:ml-5 [&_li]:list-disc [&_li]:pl-1 [&_p]:my-4 [&_pre]:my-5 [&_ul]:my-4"
+                dangerouslySetInnerHTML={{ __html: markdownToHtml(section.markdownContent) }}
+              />
             </CardContent>
           </Card>
         ))}

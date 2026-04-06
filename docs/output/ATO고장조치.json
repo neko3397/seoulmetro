@@ -1,0 +1,127 @@
+{
+  "file name" : "ATO고장조치.pdf",
+  "number of pages" : 1,
+  "author" : null,
+  "title" : "ato 고장조치.hwp",
+  "creation date" : "D:20260404052839+00'00'",
+  "modification date" : "D:20260404052839+00'00'",
+  "kids" : [ {
+    "type" : "paragraph",
+    "id" : 21,
+    "level" : "2",
+    "page number" : 1,
+    "bounding box" : [ 24.0, 816.877, 372.326, 826.37 ],
+    "font" : "Times-Roman",
+    "font size" : 7.995,
+    "text color" : "[0.0, 0.0, 0.0]",
+    "content" : "26. 4. 4. 오후 2:28 ato 고장조치.hwp"
+  }, {
+    "type" : "paragraph",
+    "id" : 14,
+    "page number" : 1,
+    "bounding box" : [ 75.75, 769.052, 271.464, 794.588 ],
+    "font" : null,
+    "font size" : 9.997,
+    "text color" : "[0.6706, 0.6706, 0.6706]",
+    "content" : "01 1 /17 10%"
+  }, {
+    "type" : "image",
+    "id" : 12,
+    "page number" : 1,
+    "bounding box" : [ 253.5, -9.33, 604.5, 772.17 ],
+    "source" : "ATO고장조치_images/imageFile1.png"
+  }, {
+    "type" : "image",
+    "id" : 7,
+    "page number" : 1,
+    "bounding box" : [ 100.5, 640.92, 180.75, 754.17 ],
+    "source" : "ATO고장조치_images/imageFile2.png"
+  }, {
+    "type" : "list",
+    "id" : 6,
+    "level" : "1",
+    "page number" : 1,
+    "bounding box" : [ 137.133, 4.648, 149.983, 628.496 ],
+    "numbering style" : "arabic numbers",
+    "number of list items" : 5,
+    "list items" : [ {
+      "type" : "list item",
+      "page number" : 1,
+      "bounding box" : [ 138.012, 604.648, 147.274, 628.496 ],
+      "font" : null,
+      "font size" : 9.75,
+      "text color" : "[0.6706, 0.6706, 0.6706]",
+      "content" : "1",
+      "kids" : [ ]
+    }, {
+      "type" : "list item",
+      "page number" : 1,
+      "bounding box" : [ 137.332, 454.648, 149.383, 478.496 ],
+      "font" : null,
+      "font size" : 9.75,
+      "text color" : "[0.6706, 0.6706, 0.6706]",
+      "content" : "2",
+      "kids" : [ ]
+    }, {
+      "type" : "list item",
+      "page number" : 1,
+      "bounding box" : [ 137.215, 304.648, 149.734, 328.496 ],
+      "font" : null,
+      "font size" : 9.75,
+      "text color" : "[0.6706, 0.6706, 0.6706]",
+      "content" : "3",
+      "kids" : [ ]
+    }, {
+      "type" : "list item",
+      "page number" : 1,
+      "bounding box" : [ 137.133, 154.648, 149.983, 178.496 ],
+      "font" : null,
+      "font size" : 9.75,
+      "text color" : "[0.6706, 0.6706, 0.6706]",
+      "content" : "4",
+      "kids" : [ ]
+    }, {
+      "type" : "list item",
+      "page number" : 1,
+      "bounding box" : [ 137.262, 4.648, 149.605, 28.496 ],
+      "font" : null,
+      "font size" : 9.75,
+      "text color" : "[0.6706, 0.6706, 0.6706]",
+      "content" : "5",
+      "kids" : [ ]
+    } ]
+  }, {
+    "type" : "image",
+    "id" : 8,
+    "page number" : 1,
+    "bounding box" : [ 100.5, 490.92, 180.75, 604.17 ],
+    "source" : "ATO고장조치_images/imageFile3.png"
+  }, {
+    "type" : "image",
+    "id" : 9,
+    "page number" : 1,
+    "bounding box" : [ 100.5, 340.92, 180.75, 454.17 ],
+    "source" : "ATO고장조치_images/imageFile4.png"
+  }, {
+    "type" : "image",
+    "id" : 10,
+    "page number" : 1,
+    "bounding box" : [ 100.5, 190.92, 180.75, 304.17 ],
+    "source" : "ATO고장조치_images/imageFile5.png"
+  }, {
+    "type" : "image",
+    "id" : 11,
+    "page number" : 1,
+    "bounding box" : [ 100.5, 40.92, 180.75, 154.17 ],
+    "source" : "ATO고장조치_images/imageFile6.png"
+  }, {
+    "type" : "paragraph",
+    "id" : 22,
+    "page number" : 1,
+    "bounding box" : [ 24.0, 14.377, 570.986, 23.87 ],
+    "font" : "Times-Roman",
+    "font size" : 7.995,
+    "text color" : "[0.0, 0.0, 0.0]",
+    "content" : "ﬁle:///Users/kimseunghyun/Downloads/ato 고장조치.hwp 1/1"
+  } ]
+}
