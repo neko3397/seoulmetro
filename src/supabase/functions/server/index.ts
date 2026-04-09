@@ -29,6 +29,13 @@ const VIDEO_BUCKET = "make-a8898ff1-videos";
 const IMAGE_BUCKET = "make-a8898ff1-images";
 const DOCUMENT_BUCKET = "make-a8898ff1-documents";
 const NOW = () => new Date().toISOString();
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+const DEFAULT_CHAT_MODEL = "gpt-5.4-mini";
+const DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small";
+const DEFAULT_RETRIEVAL_SCOPE = ["guides", "notices"];
+const DEFAULT_DAILY_QUESTION_LIMIT = 20;
+const DEFAULT_SYSTEM_PROMPT =
+  "당신은 사내규정과 발행된 공지를 근거로만 답하는 챗봇입니다. 제공된 문서 범위를 벗어난 추측은 하지 말고, 근거가 부족하면 모른다고 답하세요. 답변 마지막에는 참고한 문서를 짧게 정리하세요.";
 const DOCUMENT_SIGNED_URL_TTL = 60 * 60 * 24 * 7;
 const ALLOWED_DOCUMENT_TYPES = new Map([
   ["application/pdf", "pdf"],
@@ -324,6 +331,68 @@ function chunkText(text: string, chunkSize: number, overlap: number) {
     start = end - safeOverlap;
   }
   return chunks;
+}
+
+function normalizeRetrievalScope(value: unknown) {
+  const input = Array.isArray(value) ? value : [];
+  const normalized = input
+    .map((entry) => String(entry || "").trim())
+    .filter((entry) => entry === "guides" || entry === "notices");
+  return normalized.length ? Array.from(new Set(normalized)) : [...DEFAULT_RETRIEVAL_SCOPE];
+}
+
+function getSeoulDayBounds(now = new Date()) {
+  const seoulNow = new Date(now.getTime() + KST_OFFSET_MS);
+  const startMs = Date.UTC(seoulNow.getUTCFullYear(), seoulNow.getUTCMonth(), seoulNow.getUTCDate(), -9, 0, 0, 0);
+  const nextMs = startMs + 24 * 60 * 60 * 1000;
+  return {
+    start: new Date(startMs).toISOString(),
+    end: new Date(nextMs).toISOString(),
+  };
+}
+
+function getSourceScopeKey(sourceType: string) {
+  if (sourceType === "guide") return "guides";
+  if (sourceType === "community_post") return "notices";
+  return "other";
+}
+
+function makeChatUsage(dailyLimit: number, usedToday: number, resetsAt: string) {
+  const safeLimit = Math.max(1, Number(dailyLimit || DEFAULT_DAILY_QUESTION_LIMIT));
+  const safeUsedToday = Math.max(0, Number(usedToday || 0));
+  return {
+    dailyLimit: safeLimit,
+    usedToday: safeUsedToday,
+    remainingToday: Math.max(0, safeLimit - safeUsedToday),
+    resetsAt,
+  };
+}
+
+function buildChatSources(chunks: any[]) {
+  const sourceMap = new Map<string, any>();
+
+  for (const chunk of chunks || []) {
+    const metadata = chunk.metadata || {};
+    const existing = sourceMap.get(chunk.source_id);
+    const nextSnippet = String(chunk.content || "").replace(/\s+/g, " ").trim().slice(0, 220);
+    const nextSource = {
+      sourceId: chunk.source_id,
+      sourceType: metadata.sourceType === "guide" ? "guide" : "community_post",
+      title: String(metadata.title || "문서"),
+      snippet: nextSnippet,
+      score: Number(chunk.score || 0),
+      target: {
+        type: metadata.targetType === "guide" ? "guide" : "post",
+        id: String(metadata.targetId || metadata.guideId || metadata.postId || ""),
+      },
+    };
+
+    if (!existing || nextSource.score > existing.score) {
+      sourceMap.set(chunk.source_id, nextSource);
+    }
+  }
+
+  return Array.from(sourceMap.values()).filter((source) => source.target.id);
 }
 
 function cosineSimilarity(a: number[], b: number[]) {
@@ -689,15 +758,26 @@ async function getChatSettings() {
     .eq("id", "default")
     .maybeSingle();
   if (error) throw error;
-  if (data) return data;
+  if (data) {
+    return {
+      ...data,
+      model: data.model || DEFAULT_CHAT_MODEL,
+      embedding_model: data.embedding_model || DEFAULT_EMBEDDING_MODEL,
+      retrieval_scope: normalizeRetrievalScope(data.retrieval_scope),
+      daily_question_limit: Math.max(1, Number(data.daily_question_limit || DEFAULT_DAILY_QUESTION_LIMIT)),
+      system_prompt: data.system_prompt || "",
+      is_enabled: data.is_enabled !== false,
+    };
+  }
   const fallback = {
     id: "default",
     provider: "openai",
-    model: "gpt-5.4",
-    embedding_model: "text-embedding-3-small",
-    retrieval_scope: ["guides", "community"],
+    model: DEFAULT_CHAT_MODEL,
+    embedding_model: DEFAULT_EMBEDDING_MODEL,
+    retrieval_scope: [...DEFAULT_RETRIEVAL_SCOPE],
     chunk_size: 800,
     chunk_overlap: 120,
+    daily_question_limit: DEFAULT_DAILY_QUESTION_LIMIT,
     is_enabled: true,
     system_prompt: "",
     updated_at: NOW(),
@@ -713,6 +793,13 @@ async function upsertChatSettings(patch: any) {
     ...current,
     ...patch,
     id: "default",
+    retrieval_scope: normalizeRetrievalScope(patch?.retrieval_scope ?? current.retrieval_scope),
+    model: patch?.model || current.model || DEFAULT_CHAT_MODEL,
+    embedding_model: patch?.embedding_model || current.embedding_model || DEFAULT_EMBEDDING_MODEL,
+    daily_question_limit: Math.max(
+      1,
+      Number(patch?.daily_question_limit || current.daily_question_limit || DEFAULT_DAILY_QUESTION_LIMIT),
+    ),
     updated_at: NOW(),
   };
   const { error } = await supabase.from("chat_settings").upsert(merged, { onConflict: "id" });
@@ -733,13 +820,8 @@ async function buildDocumentSources() {
 
   const { data: posts, error: postError } = await supabase
     .from("community_posts")
-    .select("id, title, summary, content, is_published");
+    .select("id, title, summary, content, is_published, approval_status, post_type");
   if (postError) throw postError;
-
-  const { data: assets, error: assetError } = await supabase
-    .from("community_assets")
-    .select("id, post_id, file_name, mime_type, metadata");
-  if (assetError) throw assetError;
 
   const byGuide = new Map<string, any[]>();
   for (const section of sections || []) {
@@ -748,7 +830,7 @@ async function buildDocumentSources() {
   }
 
   const sources: any[] = [];
-  for (const guide of guides || []) {
+  for (const guide of (guides || []).filter((guide) => guide.is_published)) {
     const guideSections = (byGuide.get(guide.id) || []).sort((a, b) => a.sort_order - b.sort_order);
     const content = [
       guide.title,
@@ -762,20 +844,28 @@ async function buildDocumentSources() {
       title: guide.title,
       content_text: content,
       metadata: {
+        title: guide.title,
+        sourceType: "guide",
+        targetType: "guide",
+        targetId: guide.id,
         guideId: guide.id,
-        isPublished: guide.is_published,
+        scope: "guides",
+        isPublished: true,
         sectionIds: guideSections.map((section) => section.id),
       },
     });
   }
 
-  for (const post of posts || []) {
-    const relatedAssets = (assets || []).filter((asset) => asset.post_id === post.id);
+  for (const post of (posts || []).filter(
+    (post) =>
+      post.is_published &&
+      post.approval_status === "published" &&
+      ["notice", "document"].includes(String(post.post_type || "")),
+  )) {
     const content = [
       post.title,
       post.summary || "",
       post.content || "",
-      ...relatedAssets.map((asset) => `${asset.file_name} ${asset.mime_type || ""}`),
     ].join("\n\n");
     sources.push({
       id: `community_${post.id}`,
@@ -784,9 +874,14 @@ async function buildDocumentSources() {
       title: post.title,
       content_text: content,
       metadata: {
+        title: post.title,
+        sourceType: "community_post",
+        targetType: "post",
+        targetId: post.id,
         postId: post.id,
-        isPublished: post.is_published,
-        assetIds: relatedAssets.map((asset) => asset.id),
+        postType: post.post_type,
+        scope: "notices",
+        isPublished: true,
       },
     });
   }
@@ -862,9 +957,9 @@ async function rebuildIndex() {
 }
 
 async function getIndexStatus() {
-  const { count: sourceCount, error: sourceError } = await supabase
+  const { data: sourceRows, count: sourceCount, error: sourceError } = await supabase
     .from("document_sources")
-    .select("*", { count: "exact", head: true });
+    .select("source_type", { count: "exact" });
   if (sourceError) throw sourceError;
   const { count: chunkCount, error: chunkError } = await supabase
     .from("document_chunks")
@@ -877,18 +972,97 @@ async function getIndexStatus() {
     .limit(1)
     .maybeSingle();
   if (latestError) throw latestError;
+  const scopeCounts = { guides: 0, notices: 0 };
+  for (const row of sourceRows || []) {
+    const scopeKey = getSourceScopeKey(row.source_type);
+    if (scopeKey === "guides" || scopeKey === "notices") {
+      scopeCounts[scopeKey] += 1;
+    }
+  }
   return {
     sourceCount: sourceCount || 0,
     chunkCount: chunkCount || 0,
     lastIndexedAt: latest?.last_indexed_at || null,
+    scopeCounts,
   };
+}
+
+async function getDailyChatUsage(settings: any, employeeId: string | null) {
+  const bounds = getSeoulDayBounds();
+  if (!employeeId) {
+    return makeChatUsage(settings.daily_question_limit, 0, bounds.end);
+  }
+
+  const { count, error } = await supabase
+    .from("chat_query_logs")
+    .select("*", { count: "exact", head: true })
+    .eq("employee_id", employeeId)
+    .gte("created_at", bounds.start)
+    .lt("created_at", bounds.end)
+    .in("status", ["success", "no_context", "error"]);
+  if (error) throw error;
+
+  return makeChatUsage(settings.daily_question_limit, count || 0, bounds.end);
 }
 
 async function createChatAnswer(question: string, employeeId: string | null) {
   const settings = await getChatSettings();
+
+  if (!settings.is_enabled) {
+    const usage = await getDailyChatUsage(settings, employeeId);
+    return {
+      status: "disabled",
+      answer: "현재 AI 챗봇이 비활성화되어 있습니다. 관리자에게 문의하세요.",
+      sources: [],
+      model: settings.model,
+      usage,
+    };
+  }
+
+  const usage = await getDailyChatUsage(settings, employeeId);
+  if (employeeId && usage.remainingToday <= 0) {
+    return {
+      status: "rate_limited",
+      answer: `오늘 질문 가능 횟수 ${usage.dailyLimit}회를 모두 사용했습니다. 다음 사용 가능 시각은 ${new Date(
+        usage.resetsAt,
+      ).toLocaleString("ko-KR", { hour12: false })} 입니다.`,
+      sources: [],
+      model: settings.model,
+      usage,
+    };
+  }
+
+  const retrievalScope = normalizeRetrievalScope(settings.retrieval_scope);
+  const allowedSourceTypes = retrievalScope.includes("notices") ? ["guide", "community_post"] : ["guide"];
+  if (!retrievalScope.includes("guides")) {
+    allowedSourceTypes.splice(allowedSourceTypes.indexOf("guide"), 1);
+  }
+  if (!retrievalScope.includes("notices")) {
+    const postIndex = allowedSourceTypes.indexOf("community_post");
+    if (postIndex >= 0) allowedSourceTypes.splice(postIndex, 1);
+  }
+
+  const { data: indexedSources, error: sourceError } = await supabase
+    .from("document_sources")
+    .select("id, source_type, metadata")
+    .in("source_type", allowedSourceTypes.length ? allowedSourceTypes : ["__none__"]);
+  if (sourceError) throw sourceError;
+
+  const indexedSourceIds = (indexedSources || []).map((source) => source.id);
+  if (!indexedSourceIds.length) {
+    return {
+      status: "no_context",
+      answer: "현재 검색 가능한 문서가 없습니다. 관리자에게 문서 색인 상태를 확인해 달라고 요청하세요.",
+      sources: [],
+      model: settings.model,
+      usage,
+    };
+  }
+
   const { data: chunks, error } = await supabase
     .from("document_chunks")
-    .select("id, source_id, content, embedding, metadata");
+    .select("id, source_id, content, embedding, metadata")
+    .in("source_id", indexedSourceIds);
   if (error) throw error;
 
   let scoredChunks = (chunks || []).map((chunk) => ({
@@ -919,26 +1093,38 @@ async function createChatAnswer(question: string, employeeId: string | null) {
       .sort((a, b) => b.score - a.score);
   }
 
-  const topChunks = scoredChunks.filter((chunk) => chunk.score > -1).slice(0, 5);
-  if (topChunks.length === 0 || topChunks.every((chunk) => chunk.score <= 0)) {
+  const topChunks = scoredChunks
+    .filter((chunk) => (queryEmbedding ? chunk.score >= 0.2 : chunk.score >= 1))
+    .slice(0, 5);
+  if (topChunks.length === 0) {
     return {
       status: "no_context",
       answer: "관련 문서를 찾지 못했습니다. 질문 범위를 좁히거나 관리자에게 문서 색인을 요청하세요.",
       sources: [],
       model: settings.model,
+      usage,
     };
   }
 
+  const sources = buildChatSources(topChunks);
   const context = topChunks
-    .map((chunk, index) => `문서 ${index + 1}\n${chunk.content}`)
+    .map(
+      (chunk, index) =>
+        `문서 ${index + 1}\n제목: ${chunk.metadata?.title || "문서"}\n출처유형: ${
+          chunk.metadata?.sourceType || "unknown"
+        }\n본문:\n${chunk.content}`,
+    )
     .join("\n\n");
 
   if (!Deno.env.get("OPENAI_API_KEY")) {
     return {
       status: "success",
-      answer: `OpenAI API 키가 설정되지 않아 요약 모드로 응답합니다.\n\n질문: ${question}\n\n관련 문서 요약:\n${topChunks.map((chunk) => `- ${String(chunk.content).slice(0, 180)}`).join("\n")}`,
-      sources: topChunks.map((chunk) => ({ sourceId: chunk.source_id, metadata: chunk.metadata })),
+      answer: `OpenAI API 키가 설정되지 않아 문서 근거만 정리합니다.\n\n질문: ${question}\n\n관련 근거:\n${sources
+        .map((source) => `- ${source.title}: ${source.snippet}`)
+        .join("\n")}`,
+      sources,
       model: "local-fallback",
+      usage,
     };
   }
 
@@ -949,16 +1135,14 @@ async function createChatAnswer(question: string, employeeId: string | null) {
       Authorization: `Bearer ${Deno.env.get("OPENAI_API_KEY")}`,
     },
     body: JSON.stringify({
-      model: settings.model || "gpt-5.4",
+      model: settings.model || DEFAULT_CHAT_MODEL,
       input: [
         {
           role: "system",
           content: [
             {
               type: "input_text",
-              text:
-                settings.system_prompt ||
-                "당신은 사내 교육 문서를 바탕으로 답하는 챗봇입니다. 근거가 없는 추측은 하지 말고, 답변 끝에 관련 문서가 무엇인지 짧게 정리하세요.",
+              text: settings.system_prompt || DEFAULT_SYSTEM_PROMPT,
             },
           ],
         },
@@ -989,8 +1173,9 @@ async function createChatAnswer(question: string, employeeId: string | null) {
   return {
     status: "success",
     answer,
-    sources: topChunks.map((chunk) => ({ sourceId: chunk.source_id, metadata: chunk.metadata })),
+    sources,
     model: settings.model,
+    usage,
   };
 }
 
@@ -2709,6 +2894,7 @@ app.get("/make-server-a8898ff1/admin/ai/settings", async (c: any) => {
         chunkOverlap: settings.chunk_overlap,
         systemPrompt: settings.system_prompt || "",
         isEnabled: Boolean(settings.is_enabled),
+        dailyQuestionLimit: Number(settings.daily_question_limit || DEFAULT_DAILY_QUESTION_LIMIT),
       },
       provider: providerSetting.value,
     });
@@ -2723,13 +2909,14 @@ app.put("/make-server-a8898ff1/admin/ai/settings", async (c: any) => {
     const body = await c.req.json();
     const settings = await upsertChatSettings({
       provider: body.provider || "openai",
-      model: body.model || "gpt-5.4",
-      embedding_model: body.embeddingModel || "text-embedding-3-small",
-      retrieval_scope: Array.isArray(body.retrievalScope) ? body.retrievalScope : ["guides", "community"],
+      model: body.model || DEFAULT_CHAT_MODEL,
+      embedding_model: body.embeddingModel || DEFAULT_EMBEDDING_MODEL,
+      retrieval_scope: normalizeRetrievalScope(body.retrievalScope),
       chunk_size: Number(body.chunkSize || 800),
       chunk_overlap: Number(body.chunkOverlap || 120),
       system_prompt: body.systemPrompt || "",
       is_enabled: body.isEnabled !== false,
+      daily_question_limit: Math.max(1, Number(body.dailyQuestionLimit || DEFAULT_DAILY_QUESTION_LIMIT)),
     });
     await upsertSetting("ai_provider", {
       provider: settings.provider,
@@ -2792,7 +2979,22 @@ app.post("/make-server-a8898ff1/chat/query", async (c: any) => {
   } catch (error) {
     console.error("Chat query error:", error);
     await logChatQuery(question, "", "error", "unknown", [], employeeId, String(error));
-    return c.json({ error: "챗봇 응답 생성 중 오류가 발생했습니다." }, 500);
+    let usage = makeChatUsage(DEFAULT_DAILY_QUESTION_LIMIT, 0, getSeoulDayBounds().end);
+    let model = DEFAULT_CHAT_MODEL;
+    try {
+      const settings = await getChatSettings();
+      usage = await getDailyChatUsage(settings, employeeId);
+      model = settings.model || DEFAULT_CHAT_MODEL;
+    } catch (usageError) {
+      console.warn("Failed to build error usage:", usageError);
+    }
+    return c.json({
+      status: "error",
+      answer: "챗봇 응답 생성 중 오류가 발생했습니다.",
+      sources: [],
+      model,
+      usage,
+    });
   }
 });
 

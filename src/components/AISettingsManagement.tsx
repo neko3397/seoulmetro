@@ -1,11 +1,18 @@
 import React, { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
+import { Checkbox } from "./ui/checkbox";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { apiRequest } from "../lib/api";
+import type { ChatQueryResult } from "../types/content";
+
+const RETRIEVAL_SCOPE_OPTIONS = [
+  { value: "guides", label: "사내규정" },
+  { value: "notices", label: "공지/문서 게시물" },
+];
 
 interface AISettingsManagementProps {
   onUpdated: () => void;
@@ -17,20 +24,26 @@ export function AISettingsManagement({ onUpdated }: AISettingsManagementProps) {
   const [reindexing, setReindexing] = useState(false);
   const [querying, setQuerying] = useState(false);
   const [logs, setLogs] = useState<any[]>([]);
-  const [indexStatus, setIndexStatus] = useState({ sourceCount: 0, chunkCount: 0, lastIndexedAt: "" });
+  const [indexStatus, setIndexStatus] = useState({
+    sourceCount: 0,
+    chunkCount: 0,
+    lastIndexedAt: "",
+    scopeCounts: { guides: 0, notices: 0 },
+  });
   const [formData, setFormData] = useState({
     provider: "openai",
-    model: "gpt-5.4",
+    model: "gpt-5.4-mini",
     embeddingModel: "text-embedding-3-small",
-    retrievalScope: "guides,community",
+    retrievalScope: ["guides", "notices"],
     chunkSize: 800,
     chunkOverlap: 120,
+    dailyQuestionLimit: 20,
     systemPrompt: "",
     isEnabled: true,
     apiKeyConfigured: false,
   });
   const [testQuestion, setTestQuestion] = useState("");
-  const [testAnswer, setTestAnswer] = useState("");
+  const [testResult, setTestResult] = useState<ChatQueryResult | null>(null);
 
   const load = async () => {
     try {
@@ -50,19 +63,25 @@ export function AISettingsManagement({ onUpdated }: AISettingsManagementProps) {
       const provider = settingsData.provider || {};
       setFormData({
         provider: settings.provider || "openai",
-        model: settings.model || "gpt-5.4",
+        model: settings.model || "gpt-5.4-mini",
         embeddingModel: settings.embeddingModel || "text-embedding-3-small",
-        retrievalScope: Array.isArray(settings.retrievalScope)
-          ? settings.retrievalScope.join(",")
-          : "guides,community",
+        retrievalScope: Array.isArray(settings.retrievalScope) ? settings.retrievalScope : ["guides", "notices"],
         chunkSize: Number(settings.chunkSize || 800),
         chunkOverlap: Number(settings.chunkOverlap || 120),
+        dailyQuestionLimit: Number(settings.dailyQuestionLimit || 20),
         systemPrompt: settings.systemPrompt || "",
         isEnabled: settings.isEnabled !== false,
         apiKeyConfigured: Boolean(provider.apiKeyConfigured),
       });
       setLogs(logsData.logs || []);
-      setIndexStatus(indexData.status || { sourceCount: 0, chunkCount: 0, lastIndexedAt: "" });
+      setIndexStatus(
+        indexData.status || {
+          sourceCount: 0,
+          chunkCount: 0,
+          lastIndexedAt: "",
+          scopeCounts: { guides: 0, notices: 0 },
+        },
+      );
     } catch (error) {
       console.error("Failed to load AI settings:", error);
     } finally {
@@ -86,9 +105,10 @@ export function AISettingsManagement({ onUpdated }: AISettingsManagementProps) {
           provider: formData.provider,
           model: formData.model,
           embeddingModel: formData.embeddingModel,
-          retrievalScope: formData.retrievalScope.split(",").map((value) => value.trim()).filter(Boolean),
+          retrievalScope: formData.retrievalScope,
           chunkSize: Number(formData.chunkSize),
           chunkOverlap: Number(formData.chunkOverlap),
+          dailyQuestionLimit: Number(formData.dailyQuestionLimit),
           systemPrompt: formData.systemPrompt,
           isEnabled: formData.isEnabled,
         }),
@@ -148,7 +168,7 @@ export function AISettingsManagement({ onUpdated }: AISettingsManagementProps) {
         alert(data.error);
         return;
       }
-      setTestAnswer(data.answer || "");
+      setTestResult(data);
       await load();
     } catch (error) {
       console.error("Failed to run test query:", error);
@@ -165,6 +185,15 @@ export function AISettingsManagement({ onUpdated }: AISettingsManagementProps) {
       </Card>
     );
   }
+
+  const toggleScope = (scope: string, checked: boolean) => {
+    setFormData((prev) => ({
+      ...prev,
+      retrievalScope: checked
+        ? Array.from(new Set([...prev.retrievalScope, scope]))
+        : prev.retrievalScope.filter((value) => value !== scope),
+    }));
+  };
 
   return (
     <div className="space-y-6">
@@ -200,13 +229,18 @@ export function AISettingsManagement({ onUpdated }: AISettingsManagementProps) {
               />
             </div>
             <div>
-              <Label htmlFor="retrievalScope">색인 범위</Label>
-              <Input
-                id="retrievalScope"
-                value={formData.retrievalScope}
-                onChange={(e) => setFormData((prev) => ({ ...prev, retrievalScope: e.target.value }))}
-                placeholder="guides,community"
-              />
+              <Label>검색 범위</Label>
+              <div className="mt-2 space-y-2 rounded-md border p-3">
+                {RETRIEVAL_SCOPE_OPTIONS.map((option) => (
+                  <label key={option.value} className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={formData.retrievalScope.includes(option.value)}
+                      onCheckedChange={(checked) => toggleScope(option.value, checked === true)}
+                    />
+                    <span>{option.label}</span>
+                  </label>
+                ))}
+              </div>
             </div>
             <div>
               <Label htmlFor="chunkSize">청크 크기</Label>
@@ -224,6 +258,18 @@ export function AISettingsManagement({ onUpdated }: AISettingsManagementProps) {
                 type="number"
                 value={formData.chunkOverlap}
                 onChange={(e) => setFormData((prev) => ({ ...prev, chunkOverlap: Number(e.target.value || 0) }))}
+              />
+            </div>
+            <div>
+              <Label htmlFor="dailyQuestionLimit">사용자별 일일 질문 제한</Label>
+              <Input
+                id="dailyQuestionLimit"
+                type="number"
+                min={1}
+                value={formData.dailyQuestionLimit}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, dailyQuestionLimit: Math.max(1, Number(e.target.value || 1)) }))
+                }
               />
             </div>
           </div>
@@ -266,7 +312,7 @@ export function AISettingsManagement({ onUpdated }: AISettingsManagementProps) {
         <CardHeader>
           <CardTitle>RAG 상태</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-3">
+        <CardContent className="grid gap-4 md:grid-cols-4">
           <div className="rounded-md border p-4">
             <div className="text-sm text-muted-foreground">문서 수</div>
             <div className="text-2xl font-bold">{indexStatus.sourceCount}</div>
@@ -281,6 +327,13 @@ export function AISettingsManagement({ onUpdated }: AISettingsManagementProps) {
               {indexStatus.lastIndexedAt
                 ? new Date(indexStatus.lastIndexedAt).toLocaleString("ko-KR")
                 : "없음"}
+            </div>
+          </div>
+          <div className="rounded-md border p-4">
+            <div className="text-sm text-muted-foreground">범위별 문서 수</div>
+            <div className="space-y-1 text-sm font-medium">
+              <div>사내규정 {indexStatus.scopeCounts?.guides || 0}</div>
+              <div>공지/문서 {indexStatus.scopeCounts?.notices || 0}</div>
             </div>
           </div>
         </CardContent>
@@ -300,11 +353,34 @@ export function AISettingsManagement({ onUpdated }: AISettingsManagementProps) {
           <Button onClick={handleTestQuery} disabled={querying}>
             질문 실행
           </Button>
-          {testAnswer && (
-            <div className="rounded-md border p-4 whitespace-pre-wrap text-sm">
-              {testAnswer}
+          {testResult ? (
+            <div className="space-y-4">
+              <div className="rounded-md border p-4 whitespace-pre-wrap text-sm">
+                {testResult.answer}
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                <span>상태: {testResult.status}</span>
+                <span>모델: {testResult.model}</span>
+                <span>
+                  사용량: {testResult.usage.usedToday}/{testResult.usage.dailyLimit}
+                </span>
+                <span>남은 횟수: {testResult.usage.remainingToday}</span>
+              </div>
+              {testResult.sources.length ? (
+                <div className="space-y-2">
+                  {testResult.sources.map((source) => (
+                    <div key={`${source.sourceId}-${source.target.id}`} className="rounded-md border p-3 text-sm">
+                      <div className="font-medium">{source.title}</div>
+                      <div className="text-muted-foreground">
+                        {source.sourceType} / 관련도 {source.score.toFixed(3)}
+                      </div>
+                      <div className="mt-1 text-muted-foreground">{source.snippet}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
-          )}
+          ) : null}
         </CardContent>
       </Card>
 

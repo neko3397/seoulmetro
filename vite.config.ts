@@ -7,6 +7,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      injectRegister: false,
       registerType: 'autoUpdate',
       includeAssets: ['icons/*.png', 'manifest.json'],
       manifest: {
@@ -37,6 +38,8 @@ export default defineConfig({
         clientsClaim: true,
         skipWaiting: true,
         cleanupOutdatedCaches: true,
+        globPatterns: ['**/*.{js,css,ico,png,svg,webmanifest,json}'],
+        navigateFallbackDenylist: [/^\/.*$/],
         runtimeCaching: [
           {
             // Supabase Edge Functions: 캐시 금지(항상 네트워크)

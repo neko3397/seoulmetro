@@ -1,11 +1,7 @@
 import { PersonalizedProfileInput } from "../types/content";
 import { Video } from "../types/video";
 import { normalizeVideo } from "../lib/video";
-import {
-  NAV_STACK_STORAGE_KEY,
-  NAV_STATE_STORAGE_KEY,
-  PERSONALIZED_PROFILE_STORAGE_KEY,
-} from "./constants";
+import { NAV_STATE_STORAGE_KEY, PERSONALIZED_PROFILE_STORAGE_KEY } from "./constants";
 import { NavigationState } from "./types";
 
 export const readPersistedNavigationState = (): Partial<NavigationState> => {
@@ -24,29 +20,6 @@ export const persistNavigationState = (state: NavigationState) => {
     sessionStorage.setItem(NAV_STATE_STORAGE_KEY, JSON.stringify(state));
   } catch (error) {
     console.warn("Failed to persist navigation state:", error);
-  }
-};
-
-export const readPersistedNavigationStack = (): NavigationState[] => {
-  try {
-    const raw = sessionStorage.getItem(NAV_STACK_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed)
-      ? parsed
-          .filter((entry) => entry && typeof entry.view === "string")
-          .map((entry) => (entry?.video ? { ...entry, video: normalizeVideo(entry.video) } : entry))
-      : [];
-  } catch (error) {
-    console.warn("Failed to parse persisted navigation stack:", error);
-    return [];
-  }
-};
-
-export const persistNavigationStack = (stack: NavigationState[]) => {
-  try {
-    sessionStorage.setItem(NAV_STACK_STORAGE_KEY, JSON.stringify(stack));
-  } catch (error) {
-    console.warn("Failed to persist navigation stack:", error);
   }
 };
 

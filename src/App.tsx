@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } 
 import { videos as mockVideos } from "./data/mockData";
 import { Video } from "./types/video";
 import {
+  ChatSource,
   CommunityPost,
   FeedItem,
   GuideCategory,
@@ -28,14 +29,14 @@ import {
   PERSONALIZED_PROFILE_STORAGE_KEY,
   RECOMMENDATION_CACHE_PREFIX,
 } from "./app/constants";
+import { ChatbotPage } from "./app/pages/ChatbotPage";
 import { HomeFeedPage } from "./app/pages/HomeFeedPage";
+import { NoticeFeedPage } from "./app/pages/NoticeFeedPage";
 import { WikiListPage } from "./app/pages/WikiListPage";
 import { AppShellCache, Category, NavigateOptions, NavigationState, ViewState } from "./app/types";
 import {
   isSameNavigationState,
-  persistNavigationStack,
   persistNavigationState,
-  readPersistedNavigationStack,
   readPersistedNavigationState,
   readPersistedProfile,
   sortVideosByCreatedAt,
@@ -119,20 +120,7 @@ export default function App() {
   const [detailLoading, setDetailLoading] = useState(false);
   const initializedHistoryRef = useRef(false);
   const currentUserRef = useRef(currentUser);
-  const currentNavigationStateRef = useRef<NavigationState | null>(
-    restoredNavigationState.view
-      ? {
-          view: restoredNavigationState.view,
-          depth: typeof restoredNavigationState.depth === "number" ? restoredNavigationState.depth : 0,
-          topicId: restoredNavigationState.topicId,
-          video: (restoredNavigationState.video as Video) || null,
-          guide: (restoredNavigationState.guide as GuideDetail) || null,
-          post: (restoredNavigationState.post as CommunityPost) || null,
-        }
-      : null,
-  );
   const lastNavigationRequestRef = useRef<{ state: Partial<NavigationState>; timestamp: number } | null>(null);
-  const navigationStackRef = useRef<NavigationState[]>(readPersistedNavigationStack());
 
   const getRecommendationCacheKey = (profile: PersonalizedProfileInput) =>
     `${RECOMMENDATION_CACHE_PREFIX}${profile.role}:${profile.careerStage}`;
@@ -193,51 +181,17 @@ export default function App() {
         guide: null,
         post: null,
       },
-      { replace: true, resetDepth: true },
+      { replace: true },
     );
   }, [adminUser, currentView]);
 
   const applyNavigationState = (state: NavigationState) => {
-    currentNavigationStateRef.current = state;
     setCurrentView(state.view);
     setSelectedTopicId(state.topicId || "");
     setSelectedVideo(state.video || null);
     setSelectedGuide(state.guide || null);
     setSelectedPost(state.post || null);
     persistNavigationState(state);
-  };
-
-  const getBackNavigationOffset = () => {
-    const stack = navigationStackRef.current;
-    if (stack.length <= 1) {
-      return 0;
-    }
-
-    const currentState = stack[stack.length - 1];
-    let offset = 1;
-
-    for (let index = stack.length - 2; index >= 0; index -= 1) {
-      if (!isSameNavigationState(currentState, stack[index])) {
-        break;
-      }
-      offset += 1;
-    }
-
-    return offset;
-  };
-
-  const syncNavigationStack = (state: NavigationState) => {
-    const existingIndex = navigationStackRef.current.findLastIndex((entry) => isSameNavigationState(entry, state));
-    if (existingIndex >= 0) {
-      const nextStack = navigationStackRef.current.slice(0, existingIndex + 1);
-      navigationStackRef.current = nextStack;
-      persistNavigationStack(nextStack);
-      return;
-    }
-
-    const nextStack = state.depth <= 0 ? [state] : [...navigationStackRef.current, state];
-    navigationStackRef.current = nextStack;
-    persistNavigationStack(nextStack);
   };
 
   const navigateTo = (
@@ -266,11 +220,6 @@ export default function App() {
       options.replace || isSameNavigationState(currentHistoryState, nextComparableState) || isRapidDuplicateNavigation;
     const nextState: NavigationState = {
       view,
-      depth: options.resetDepth
-        ? 0
-        : shouldReplace
-          ? (currentHistoryState?.depth ?? 0)
-          : (currentHistoryState?.depth ?? 0) + 1,
       topicId: nextComparableState.topicId,
       video: nextComparableState.video,
       guide: nextComparableState.guide,
@@ -280,13 +229,6 @@ export default function App() {
       state: nextComparableState,
       timestamp: Date.now(),
     };
-    const nextStack = options.resetDepth
-      ? [nextState]
-      : shouldReplace
-        ? [...navigationStackRef.current.slice(0, Math.max(navigationStackRef.current.length - 1, 0)), nextState]
-        : [...navigationStackRef.current, nextState];
-    navigationStackRef.current = nextStack;
-    persistNavigationStack(nextStack);
 
     applyNavigationState(nextState);
 
@@ -303,15 +245,12 @@ export default function App() {
 
     const stateToPersist: NavigationState = {
       view: currentView,
-      depth: 0,
       topicId: selectedTopicId,
       video: selectedVideo,
       guide: selectedGuide,
       post: selectedPost,
     };
     persistNavigationState(stateToPersist);
-    navigationStackRef.current = [stateToPersist];
-    persistNavigationStack([stateToPersist]);
     history.replaceState(stateToPersist, "", window.location.href);
     initializedHistoryRef.current = true;
 
@@ -320,36 +259,16 @@ export default function App() {
       if (!state) {
         const fallbackState = {
           view: currentUserRef.current ? "homeFeed" : "userLogin",
-          depth: 0,
           topicId: "",
           video: null,
           guide: null,
           post: null,
         };
-        navigationStackRef.current = [fallbackState];
-        persistNavigationStack([fallbackState]);
         applyNavigationState(fallbackState);
         return;
       }
 
-      const normalizedState = {
-        ...state,
-        depth: state.depth ?? 0,
-      };
-      const currentState = currentNavigationStateRef.current;
-
-      if (currentState && isSameNavigationState(currentState, normalizedState) && normalizedState.depth !== currentState.depth) {
-        if (normalizedState.depth < currentState.depth) {
-          history.back();
-          return;
-        }
-
-        history.forward();
-        return;
-      }
-
-      syncNavigationStack(normalizedState);
-      applyNavigationState(normalizedState);
+      applyNavigationState(state);
     };
 
     window.addEventListener("popstate", handlePopState);
@@ -717,6 +636,27 @@ export default function App() {
     });
   };
 
+  const handleSelectChatSource = async (source: ChatSource) => {
+    if (source.target.type === "guide") {
+      const targetGuide = guides.find((guide) => guide.id === source.target.id);
+      if (targetGuide) {
+        navigateTo("wikiDetail", { guide: targetGuide, video: null, post: null });
+        return;
+      }
+
+      await loadGuides({ silent: true });
+      const refreshedGuide = (readCachedValue<AppShellCache>(APP_SHELL_CACHE_KEY)?.guides || []).find(
+        (guide) => guide.id === source.target.id,
+      );
+      if (refreshedGuide) {
+        navigateTo("wikiDetail", { guide: refreshedGuide, video: null, post: null });
+      }
+      return;
+    }
+
+    await loadCommunityPostDetail(source.target.id, { force: true, silent: true, navigate: true });
+  };
+
   const withRouteFallback = (content: ReactNode, message = "페이지를 불러오는 중...") => (
     <Suspense
       fallback={
@@ -741,24 +681,18 @@ export default function App() {
   };
 
   const handleBack = () => {
-    const currentHistoryState = window.history.state as NavigationState | null;
-    const backOffset = getBackNavigationOffset();
-
-    if ((currentHistoryState?.depth ?? 0) > 0) {
-      history.go(backOffset > 0 ? -backOffset : -1);
+    if (window.history.length > 1) {
+      history.back();
       return;
     }
 
     const fallbackState = {
       view: currentUser ? "homeFeed" : "userLogin",
-      depth: 0,
       topicId: "",
       video: null,
       guide: null,
       post: null,
     };
-    navigationStackRef.current = [fallbackState];
-    persistNavigationStack([fallbackState]);
     applyNavigationState(fallbackState);
     history.replaceState(fallbackState, "", window.location.href);
   };
@@ -773,7 +707,7 @@ export default function App() {
         guide: null,
         post: null,
       },
-      { replace: true, resetDepth: true },
+      { replace: true },
     );
   };
 
@@ -792,7 +726,7 @@ export default function App() {
         guide: null,
         post: null,
       },
-      { replace: true, resetDepth: true },
+      { replace: true },
     );
   };
 
@@ -820,7 +754,7 @@ export default function App() {
         guide: null,
         post: null,
       },
-      { replace: true, resetDepth: true },
+      { replace: true },
     );
   };
 
@@ -888,22 +822,12 @@ export default function App() {
         ) : (
           <div className="space-y-6">
             {currentView === "homeFeed" ? (
-              <HomeFeedPage
-                currentUser={currentUser}
-                attendanceRate={attendanceRate}
-                isComposerOpen={isComposerOpen}
-                feedLoading={feedLoading}
-                feedItems={feedItems}
-                onToggleComposer={() => setIsComposerOpen((prev) => !prev)}
-                onRefreshFeed={() => void refreshFeed()}
-                onSubmittedComposer={() => {
-                  setIsComposerOpen(false);
-                  void refreshFeed();
-                }}
-                onCloseComposer={() => setIsComposerOpen(false)}
-                onOpenEducationVideos={() => {
-                  if (!Object.keys(videosByCategory).length && categories.length) {
-                    void loadVideoCatalog(categories, { silent: true });
+                <HomeFeedPage
+                  currentUser={currentUser}
+                  attendanceRate={attendanceRate}
+                  onOpenEducationVideos={() => {
+                    if (!Object.keys(videosByCategory).length && categories.length) {
+                      void loadVideoCatalog(categories, { silent: true });
                   }
                   navigateTo("educationVideos", { video: null, guide: null, post: null });
                 }}
@@ -922,11 +846,37 @@ export default function App() {
                   }
                   navigateTo("wikiDocs", { video: null, guide: null, post: null });
                 }}
-                onOpenNotices={() => setIsComposerOpen(false)}
+                onOpenNotices={() => {
+                  setIsComposerOpen(false);
+                  navigateTo("notices", { video: null, guide: null, post: null });
+                }}
+                onOpenChatbot={() => navigateTo("chatbot", { video: null, guide: null, post: null })}
                 onOpenPersonalizedEducation={() =>
                   navigateTo("personalizedEducation", { video: null, guide: null, post: null })
                 }
                 onGoMyPage={() => navigateTo("myPage", { video: null, guide: null, post: null })}
+              />
+            ) : null}
+
+            {currentView === "chatbot" ? (
+              withRouteFallback(
+                <ChatbotPage currentUser={currentUser} onSelectSource={(source) => void handleSelectChatSource(source)} />,
+              )
+            ) : null}
+
+            {currentView === "notices" ? (
+              <NoticeFeedPage
+                currentUser={currentUser}
+                isComposerOpen={isComposerOpen}
+                feedLoading={feedLoading}
+                feedItems={feedItems}
+                onToggleComposer={() => setIsComposerOpen((prev) => !prev)}
+                onRefreshFeed={() => void refreshFeed()}
+                onSubmittedComposer={() => {
+                  setIsComposerOpen(false);
+                  void refreshFeed();
+                }}
+                onCloseComposer={() => setIsComposerOpen(false)}
                 onSelectFeedItem={handleFeedItemSelect}
               />
             ) : null}

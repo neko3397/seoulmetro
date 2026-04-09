@@ -2,7 +2,6 @@ import { BookOpen, Sparkles, User, Users } from "lucide-react";
 import { contentCacheKey } from "../lib/contentSync";
 
 export const NAV_STATE_STORAGE_KEY = "app-navigation-state-v2";
-export const NAV_STACK_STORAGE_KEY = "app-navigation-stack-v1";
 export const PERSONALIZED_PROFILE_STORAGE_KEY = "personalized-profile-input";
 export const APP_SHELL_CACHE_KEY = contentCacheKey("app-shell");
 export const COMMUNITY_POST_CACHE_PREFIX = contentCacheKey("community-post:");

@@ -110,3 +110,32 @@ export interface PersonalizedRecommendationRule {
   updatedAt?: string;
   videos?: Video[];
 }
+
+export interface ChatSourceTarget {
+  type: "guide" | "post";
+  id: string;
+}
+
+export interface ChatSource {
+  sourceId: string;
+  sourceType: "guide" | "community_post";
+  title: string;
+  snippet: string;
+  score: number;
+  target: ChatSourceTarget;
+}
+
+export interface ChatUsage {
+  dailyLimit: number;
+  usedToday: number;
+  remainingToday: number;
+  resetsAt: string;
+}
+
+export interface ChatQueryResult {
+  status: "success" | "no_context" | "disabled" | "rate_limited" | "error";
+  answer: string;
+  model: string;
+  sources: ChatSource[];
+  usage: ChatUsage;
+}

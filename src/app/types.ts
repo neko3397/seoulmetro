@@ -11,6 +11,8 @@ export interface Category {
 
 export type ViewState =
   | "homeFeed"
+  | "chatbot"
+  | "notices"
   | "educationVideos"
   | "documentDocs"
   | "documentList"
@@ -27,7 +29,6 @@ export type ViewState =
 
 export interface NavigationState {
   view: ViewState;
-  depth: number;
   topicId?: string;
   video?: Video | null;
   guide?: GuideDetail | null;
@@ -36,7 +37,6 @@ export interface NavigationState {
 
 export interface NavigateOptions {
   replace?: boolean;
-  resetDepth?: boolean;
 }
 
 export interface AppShellCache {
