@@ -241,18 +241,18 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (initializedHistoryRef.current) return;
-
-    const stateToPersist: NavigationState = {
-      view: currentView,
-      topicId: selectedTopicId,
-      video: selectedVideo,
-      guide: selectedGuide,
-      post: selectedPost,
-    };
-    persistNavigationState(stateToPersist);
-    history.replaceState(stateToPersist, "", window.location.href);
-    initializedHistoryRef.current = true;
+    if (!initializedHistoryRef.current) {
+      const stateToPersist: NavigationState = {
+        view: currentView,
+        topicId: selectedTopicId,
+        video: selectedVideo,
+        guide: selectedGuide,
+        post: selectedPost,
+      };
+      persistNavigationState(stateToPersist);
+      history.replaceState(stateToPersist, "", window.location.href);
+      initializedHistoryRef.current = true;
+    }
 
     const handlePopState = (event: PopStateEvent) => {
       const state = event.state as NavigationState | null;
@@ -273,7 +273,7 @@ export default function App() {
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [currentView, selectedGuide, selectedPost, selectedTopicId, selectedVideo]);
+  }, []);
 
   useEffect(() => {
     if (!currentUser) return;
