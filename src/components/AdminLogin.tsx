@@ -27,7 +27,7 @@ export function AdminLogin({ onLogin, onBack }: AdminLoginProps) {
 
     try {
       const normalizedEmployeeId = employeeId.trim();
-      const dummyEmail = `${normalizedEmployeeId}@admin.local`;
+      const dummyEmail = `${normalizedEmployeeId}@admin.seoulmetro.co.kr`;
       const loginUrl = `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/admin/login`;
       
       console.log('Attempting admin login to Edge Function:', loginUrl);

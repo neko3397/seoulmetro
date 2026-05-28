@@ -97,7 +97,7 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
     try {
       const normalizedEmployeeId = employeeId.trim();
       const normalizedName = name.trim();
-      const dummyEmail = `${normalizedEmployeeId}@metro.local`;
+      const dummyEmail = `${normalizedEmployeeId}@seoulmetro.co.kr`;
 
       // 1. 사전 권한 확인 (기존 로직 유지)
       const isAuthorized = await validateEmployeeAuthorization(normalizedEmployeeId, normalizedName);
