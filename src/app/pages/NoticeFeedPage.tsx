@@ -1,4 +1,4 @@
-import { ArrowLeft, FileImage, FileText, Video as VideoIcon } from "lucide-react";
+import { ArrowLeft, CalendarDays, FileImage, FileText, UserRound, Video as VideoIcon } from "lucide-react";
 import { UserCommunityComposer } from "../../components/UserCommunityComposer";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -39,73 +39,83 @@ export function NoticeFeedPage({
         <FileText className="h-4 w-4" />
       );
 
-    if (item.itemType !== "video") {
-      return (
-        <Card
-          key={item.id}
-          className="overflow-hidden border-0 premium-card"
-        >
-          <button type="button" onClick={() => void onSelectFeedItem(item)} className="block w-full text-left">
-            {item.itemType === "image" ? (
-              <div className="relative border-b bg-slate-50">
-                <div className="absolute left-4 top-4 z-10">
-                  <Badge className="bg-slate-900/85 text-white">
-                    {icon}
-                    이미지 게시물
-                  </Badge>
-                </div>
-                <img src={item.thumbnailUrl} alt={item.title} className="h-72 w-full object-cover" />
-              </div>
-            ) : (
-              <div className="px-6 pt-6">
-                <Badge className="bg-slate-900/85 text-white">
-                  {icon}
-                  문서 게시물
-                </Badge>
-              </div>
-            )}
-            <div className="flex flex-col justify-between p-6">
-              <div className="space-y-3">
-                <p className="text-sm text-slate-500">{formatDateTime(item.publishedAt)}</p>
-                <h3 className="text-2xl font-semibold tracking-tight text-slate-900">{item.title}</h3>
-                <p className="line-clamp-4 text-base leading-relaxed text-slate-600">{item.summary}</p>
-              </div>
-              <div className="mt-6 flex items-center gap-2 text-sm font-medium text-blue-700">
-                <span>상세페이지 보기</span>
-                <ArrowLeft className="h-4 w-4 rotate-180" />
-              </div>
-            </div>
-          </button>
-        </Card>
-      );
-    }
+    const authorName = item.authorName || (item.metadata?.authorName as string) || (item.itemType === "video" ? "교육담당자" : "관리자");
 
     return (
       <Card
         key={item.id}
-        className="overflow-hidden border-0 premium-card"
+        className="group relative overflow-hidden border border-slate-100/80 bg-white/70 backdrop-blur-md shadow-sm hover:shadow-md hover:border-blue-100 hover:-translate-y-0.5 transition-all duration-300 rounded-2xl premium-card"
       >
-        <button type="button" onClick={() => void onSelectFeedItem(item)} className="block w-full text-left">
-          <div className="grid gap-0 md:grid-cols-[1.1fr_1fr]">
-            <div className="relative min-h-56 overflow-hidden bg-slate-100">
-              <img src={item.thumbnailUrl} alt={item.title} className="h-full w-full object-cover" />
-              <div className="absolute left-4 top-4">
-                <Badge className="bg-slate-900/85 text-white">
-                  {icon}
-                  교육영상
-                </Badge>
-              </div>
+        <button
+          type="button"
+          onClick={() => void onSelectFeedItem(item)}
+          className="block w-full text-left"
+        >
+          <div className="flex items-center gap-4 p-5 md:p-6">
+            {/* Left Accent strip */}
+            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-blue-500 via-indigo-500 to-cyan-400 opacity-80 group-hover:opacity-100 transition-opacity" />
+
+            {/* Media Thumbnail or Type Icon */}
+            <div className="flex-shrink-0 relative pl-1.5">
+              {item.thumbnailUrl && item.itemType !== "document" ? (
+                <div className="relative h-16 w-16 md:h-20 md:w-20 overflow-hidden rounded-2xl border border-slate-100 shadow-sm bg-slate-50">
+                  <img
+                    src={item.thumbnailUrl}
+                    alt={item.title}
+                    className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  />
+                  <div className="absolute inset-0 bg-slate-950/5" />
+                  <div className="absolute bottom-1 right-1 bg-slate-900/80 p-1 rounded-md text-white">
+                    {icon}
+                  </div>
+                </div>
+              ) : (
+                <div className={`flex h-16 w-16 md:h-20 md:w-20 items-center justify-center rounded-2xl bg-gradient-to-br ${
+                  item.itemType === "video"
+                    ? "from-indigo-50 to-indigo-100/80 text-indigo-600"
+                    : "from-blue-50 to-blue-100/80 text-blue-600"
+                } border border-slate-100 shadow-sm`}>
+                  <div className="p-3 bg-white rounded-xl shadow-sm text-indigo-500">
+                    {icon}
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="flex flex-col justify-between p-6">
-              <div className="space-y-3">
-                <p className="text-sm text-slate-500">{formatDateTime(item.publishedAt)}</p>
-                <h3 className="text-2xl font-semibold tracking-tight text-slate-900">{item.title}</h3>
-                <p className="line-clamp-4 text-base leading-relaxed text-slate-600">{item.summary}</p>
+
+            {/* Text content area */}
+            <div className="flex-1 min-w-0 space-y-2">
+              {/* Meta details row: Badge, Date, Name */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 font-medium">
+                <Badge className={`px-2 py-0.5 rounded-md border-0 text-[10px] font-bold ${
+                  item.itemType === "video"
+                    ? "bg-indigo-50 text-indigo-700 hover:bg-indigo-50"
+                    : item.itemType === "image"
+                      ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-50"
+                      : "bg-blue-50 text-blue-700 hover:bg-blue-50"
+                }`}>
+                  {item.itemType === "video" ? "교육영상" : item.itemType === "image" ? "이미지 공지" : "문서 공지"}
+                </Badge>
+
+                <span className="flex items-center gap-1.5 bg-slate-50 px-2 py-0.5 rounded-full text-slate-600">
+                  <CalendarDays className="h-3.5 w-3.5 text-slate-400" />
+                  {formatDateTime(item.publishedAt)}
+                </span>
+
+                <span className="flex items-center gap-1.5 bg-slate-50 px-2 py-0.5 rounded-full text-slate-600">
+                  <UserRound className="h-3.5 w-3.5 text-slate-400" />
+                  {authorName}
+                </span>
               </div>
-              <div className="mt-6 flex items-center gap-2 text-sm font-medium text-blue-700">
-                <span>상세페이지 보기</span>
-                <ArrowLeft className="h-4 w-4 rotate-180" />
-              </div>
+
+              {/* Title */}
+              <h3 className="text-lg md:text-xl font-bold tracking-tight text-slate-900 group-hover:text-blue-700 transition-colors line-clamp-2">
+                {item.title}
+              </h3>
+            </div>
+
+            {/* Right Arrow Action */}
+            <div className="flex-shrink-0 flex items-center justify-center h-10 w-10 rounded-full bg-slate-50 group-hover:bg-blue-50 group-hover:text-blue-600 text-slate-400 transition-all duration-300">
+              <ArrowLeft className="h-4 w-4 rotate-180 group-hover:translate-x-0.5 transition-transform" />
             </div>
           </div>
         </button>

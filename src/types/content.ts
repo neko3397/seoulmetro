@@ -16,6 +16,7 @@ export interface FeedItem {
   categoryId?: string;
   video?: Video;
   postId?: string;
+  authorName?: string;
   metadata?: Record<string, unknown>;
 }
 

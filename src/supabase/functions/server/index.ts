@@ -2008,19 +2008,21 @@ async function buildFeedItems() {
 
   const videoItems = videos.map((video) => ({
     id: `video_${video.id}`,
-    itemType: "video",
+    itemType: "video" as const,
     title: video.title,
     summary: video.description || "교육 영상",
     thumbnailUrl: video.thumbnail || "https://via.placeholder.com/480x270/1f2937/ffffff?text=Video",
     publishedAt: video.updatedAt || video.createdAt || NOW(),
     target: {
-      type: "video",
+      type: "video" as const,
       id: video.id,
     },
     categoryId: video.categoryId,
     video,
+    authorName: "교육담당자",
     metadata: {
       videoType: video.videoType,
+      authorName: "교육담당자",
     },
   }));
 
@@ -2031,9 +2033,11 @@ async function buildFeedItems() {
         post.assets.find((asset) => asset.assetType === "image") ||
         post.assets.find((asset) => asset.assetType === "document");
 
+      const author = post.authorName || "관리자";
+
       return {
         id: `post_${post.id}`,
-        itemType: primaryAsset?.assetType === "image" ? "image" : "document",
+        itemType: (primaryAsset?.assetType === "image" ? "image" : "document") as const,
         title: post.title,
         summary: post.summary || post.content || "문서 게시물",
         thumbnailUrl:
@@ -2042,13 +2046,15 @@ async function buildFeedItems() {
           "https://via.placeholder.com/480x270/e5e7eb/111827?text=Document",
         publishedAt: post.publishedAt || post.updatedAt || post.createdAt,
         target: {
-          type: "post",
+          type: "post" as const,
           id: post.id,
         },
         postId: post.id,
+        authorName: author,
         metadata: {
           postType: post.postType,
           assetCount: post.assets.length,
+          authorName: author,
         },
       };
     });
