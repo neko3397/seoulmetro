@@ -2184,7 +2184,7 @@ app.post("/make-server-a8898ff1/admin/login", async (c: any) => {
     const { employeeId, password } = await c.req.json();
     const { data, error } = await supabase
       .from("admins")
-      .select("id, name, employee_id, password, is_main_admin")
+      .select("id, name, employee_id, password, is_main_admin, auth_user_id")
       .eq("employee_id", String(employeeId || "").trim())
       .eq("is_active", true)
       .maybeSingle();
@@ -2192,6 +2192,18 @@ app.post("/make-server-a8898ff1/admin/login", async (c: any) => {
     if (!data || data.password !== password) {
       return c.json({ error: "사번 또는 비밀번호가 올바르지 않습니다." }, 401);
     }
+
+    if (data.auth_user_id) {
+      try {
+        await supabase.auth.admin.updateUserById(data.auth_user_id, {
+          email_confirm: true,
+        });
+        console.log(`Auto-confirmed email for admin ${employeeId} (${data.auth_user_id}) during validation`);
+      } catch (confirmError) {
+        console.error(`Failed to auto-confirm email for admin ${employeeId}:`, confirmError);
+      }
+    }
+
     return c.json({
       success: true,
       admin: {
@@ -2199,6 +2211,7 @@ app.post("/make-server-a8898ff1/admin/login", async (c: any) => {
         name: data.name,
         employeeId: data.employee_id,
         isMainAdmin: Boolean(data.is_main_admin),
+        authUserId: data.auth_user_id || null,
       },
     });
   } catch (error) {
@@ -2267,6 +2280,18 @@ app.put("/make-server-a8898ff1/admin/:id", async (c: any) => {
     };
     const { error } = await supabase.from("admins").update(updateRow).eq("id", adminId);
     if (error) throw error;
+
+    if (updateRow.auth_user_id) {
+      try {
+        await supabase.auth.admin.updateUserById(updateRow.auth_user_id, {
+          email_confirm: true,
+        });
+        console.log(`Auto-confirmed email for admin ${adminId} (${updateRow.auth_user_id}) on sync`);
+      } catch (confirmError) {
+        console.error(`Failed to auto-confirm email for admin ${adminId} during sync:`, confirmError);
+      }
+    }
+
     return c.json({ success: true, admin: mapAdmin({ ...existing, ...updateRow }) });
   } catch (error) {
     console.error("Update admin error:", error);
@@ -2434,7 +2459,36 @@ app.post("/make-server-a8898ff1/users/validate", async (c: any) => {
         canonicalizeEmployeeId(employee.employeeId) === normalizedEmployeeId &&
         canonicalizeEmployeeName(employee.name) === normalizedName,
     );
-    return c.json({ success: isAuthorized });
+    
+    if (!isAuthorized) {
+      return c.json({ success: false });
+    }
+
+    // Check if the user has already registered and has an auth_user_id
+    const { data: existingUser, error: existingUserError } = await supabase
+      .from("users")
+      .select("auth_user_id")
+      .eq("employee_id", normalizedEmployeeId)
+      .maybeSingle();
+
+    if (existingUserError) {
+      console.warn("Error querying existing user registration status:", existingUserError);
+    }
+
+    const exists = Boolean(existingUser && existingUser.auth_user_id);
+
+    if (exists && existingUser.auth_user_id) {
+      try {
+        await supabase.auth.admin.updateUserById(existingUser.auth_user_id, {
+          email_confirm: true,
+        });
+        console.log(`Auto-confirmed email for user ${normalizedEmployeeId} (${existingUser.auth_user_id}) during validation`);
+      } catch (confirmError) {
+        console.error(`Failed to auto-confirm email for user ${normalizedEmployeeId}:`, confirmError);
+      }
+    }
+
+    return c.json({ success: true, exists });
   } catch (error) {
     console.error("Validate user error:", error);
     return c.json({ success: false, error: "사번 검증 중 오류가 발생했습니다." }, 500);
@@ -2477,6 +2531,19 @@ app.post("/make-server-a8898ff1/users", async (c: any) => {
     };
     const { error } = await supabase.from("users").upsert(row, { onConflict: "employee_id" });
     if (error) throw error;
+
+    const targetAuthUserId = authUserId || existing?.auth_user_id;
+    if (targetAuthUserId) {
+      try {
+        await supabase.auth.admin.updateUserById(targetAuthUserId, {
+          email_confirm: true,
+        });
+        console.log(`Auto-confirmed email for user ${normalizedEmployeeId} (${targetAuthUserId}) on sync`);
+      } catch (confirmError) {
+        console.error(`Failed to auto-confirm email for user ${normalizedEmployeeId} during sync:`, confirmError);
+      }
+    }
+
     return c.json({ success: true, user: await getUserByEmployeeId(normalizedEmployeeId) });
   } catch (error) {
     console.error("Save user error:", error);

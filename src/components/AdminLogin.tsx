@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/
 import { Label } from './ui/label';
 import { AlertCircle, ArrowLeft } from 'lucide-react';
 import { projectId, publicAnonKey } from '../utils/supabase/info';
+import { supabase } from '../utils/supabase/client';
 import logo from '../assets/logo.png'; // 로고 이미지 경로
 
 interface AdminLoginProps {
@@ -70,50 +71,69 @@ export function AdminLogin({ onLogin, onBack }: AdminLoginProps) {
         return;
       }
 
+      let authUserId = data.admin.authUserId;
+
       // 2. Supabase Auth 세션 생성 (RLS 및 Realtime을 위해 필요)
       // 에지 함수 로그인이 성공한 경우에만 Auth 로그인을 시도합니다.
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: dummyEmail,
-        password: password,
-      });
+      if (authUserId) {
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+          email: dummyEmail,
+          password: password,
+        });
 
-      if (authError) {
-        // 관리자가 auth.users에 없는 경우 자동으로 생성 시도 (최초 1회)
-        if (authError.message.includes("Invalid login credentials")) {
-          const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-            email: dummyEmail,
-            password: password,
-            options: {
-              data: {
-                employee_id: normalizedEmployeeId,
-                name: data.admin.name,
-                is_admin: true
-              }
-            }
-          });
-          
-          if (signUpError) {
-            console.warn("Admin Auth Auto-SignUp failed:", signUpError.message);
-          } else {
-            console.log("Admin Auth account created automatically");
-            // 가입 후 다시 로그인 시도 불필요 (signUp이 세션을 반환함)
-          }
-        } else {
+        if (authError) {
           console.error("Admin Supabase Auth error:", authError.message);
+        } else if (authData?.user?.id) {
+          authUserId = authData.user.id;
+        }
+      } else {
+        // 관리자가 auth.users에 없는 경우 자동으로 생성 시도 (최초 1회)
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email: dummyEmail,
+          password: password,
+          options: {
+            data: {
+              employee_id: normalizedEmployeeId,
+              name: data.admin.name,
+              is_admin: true
+            }
+          }
+        });
+
+        if (signUpError) {
+          console.warn("Admin Auth Auto-SignUp failed:", signUpError.message);
+        } else if (signUpData?.user?.id) {
+          console.log("Admin Auth account created automatically");
+          authUserId = signUpData.user.id;
         }
       }
 
       // 3. authUserId 매핑 업데이트를 위해 에지 함수 재호출 (옵션)
       // 에지 함수에서 이미 관리자 정보를 가져왔으므로, authUserId가 비어있다면 업데이트 요청을 보냅니다.
-      if (supabase.auth.session?.()?.user?.id) {
+      if (authUserId && authUserId !== data.admin.authUserId) {
         await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/admin/${data.admin.id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${publicAnonKey}`
           },
-          body: JSON.stringify({ authUserId: supabase.auth.session()?.user?.id })
+          body: JSON.stringify({ authUserId })
         }).catch(err => console.warn("Failed to sync admin auth_user_id:", err));
+
+        // 백엔드에서 auto-confirm 처리가 되었으므로 온전한 세션 수립을 위해 silent login 실행
+        try {
+          const { error: signInError } = await supabase.auth.signInWithPassword({
+            email: dummyEmail,
+            password: password,
+          });
+          if (signInError) {
+            console.warn("Admin post-SignUp silent login warning:", signInError.message);
+          } else {
+            console.log("Admin post-SignUp silent login successfully established session.");
+          }
+        } catch (signInErr) {
+          console.warn("Admin post-SignUp silent login error:", signInErr);
+        }
       }
 
       onLogin(data.admin);

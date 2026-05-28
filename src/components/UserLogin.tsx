@@ -22,7 +22,7 @@ interface UserLoginProps {
   onBack: () => void;
 }
 
-const validateEmployeeAuthorization = async (employeeId: string, name: string): Promise<boolean> => {
+const validateEmployeeAuthorization = async (employeeId: string, name: string): Promise<{ success: boolean; exists: boolean }> => {
   try {
     const response = await fetch(
       `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/users/validate`,
@@ -40,14 +40,17 @@ const validateEmployeeAuthorization = async (employeeId: string, name: string): 
 
     if (!response.ok) {
       console.error("Authorization validation failed with status:", response.status);
-      return false;
+      return { success: false, exists: false };
     }
 
     const data = await response.json();
-    return Boolean(data?.success);
+    return {
+      success: Boolean(data?.success),
+      exists: Boolean(data?.exists),
+    };
   } catch (error) {
     console.error("Authorization validation error:", error);
-    return false;
+    return { success: false, exists: false };
   }
 };
 
@@ -100,22 +103,30 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
       const dummyEmail = `${normalizedEmployeeId}@seoulmetro.co.kr`;
 
       // 1. 사전 권한 확인 (기존 로직 유지)
-      const isAuthorized = await validateEmployeeAuthorization(normalizedEmployeeId, normalizedName);
-      if (!isAuthorized) {
+      const authResult = await validateEmployeeAuthorization(normalizedEmployeeId, normalizedName);
+      if (!authResult.success) {
         setError("등록된 사번/이름이 아닙니다. 관리자에게 문의해주세요.");
         return;
       }
 
-      // 2. Supabase Auth 로그인/가입 시도
-      // 비밀번호는 사용자 이름(normalizedName)을 사용합니다. 
-      // (비밀번호 최소 길이는 Supabase 설정에서 3자 이하로 조정되어야 합니다.)
-      let { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: dummyEmail,
-        password: normalizedName,
-      });
+      let authData: any = null;
 
-      // 사용자가 없는 경우 자동으로 가입 시도
-      if (authError && authError.message.includes("Invalid login credentials")) {
+      // 2. Supabase Auth 로그인/가입 시도
+      if (authResult.exists) {
+        // 이미 가입된 사용자인 경우 로그인 시도
+        const { data, error: authError } = await supabase.auth.signInWithPassword({
+          email: dummyEmail,
+          password: normalizedName,
+        });
+
+        if (authError) {
+          console.error("Auth SignIn error:", authError);
+          throw new Error("로그인 정보가 올바르지 않거나 인증에 실패했습니다.");
+        }
+        authData = data;
+      } else {
+        // 처음 로그인하는 신규 사용자인 경우 바로 가입 시도
+        // (비밀번호 최소 길이는 Supabase 설정에서 3자 이하로 조정되어야 합니다.)
         const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
           email: dummyEmail,
           password: normalizedName,
@@ -126,15 +137,12 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
             }
           }
         });
-        
+
         if (signUpError) {
           console.error("Auth SignUp error:", signUpError);
           throw new Error("계정 생성 중 오류가 발생했습니다.");
         }
         authData = signUpData;
-      } else if (authError) {
-        console.error("Auth SignIn error:", authError);
-        throw new Error("인증 서버 연결 중 오류가 발생했습니다.");
       }
 
       const userStorageKey = `user_${normalizedEmployeeId}`;
@@ -174,6 +182,25 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
         const errorText = await response.text();
         console.error("Failed to sync user info:", response.status, errorText);
         throw new Error("사용자 정보를 저장하지 못했습니다.");
+      }
+
+      // 신규 가입 사용자의 경우 백엔드에서 auto-confirm 처리가 완료되었으므로,
+      // 세션을 온전히 맺기 위해 silent login을 처리합니다.
+      if (!authResult.exists) {
+        try {
+          const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+            email: dummyEmail,
+            password: normalizedName,
+          });
+          if (signInError) {
+            console.warn("Post-SignUp silent login warning:", signInError.message);
+          } else {
+            console.log("Post-SignUp silent login successfully established the session.");
+            authData = signInData;
+          }
+        } catch (signInErr) {
+          console.warn("Post-SignUp silent login error:", signInErr);
+        }
       }
 
       localStorage.setItem(userStorageKey, JSON.stringify(userData));
