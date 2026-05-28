@@ -101,6 +101,7 @@ export default function App() {
   const [videosByCategory, setVideosByCategory] = useState<Record<string, Video[]>>({});
   const [guideCategories, setGuideCategories] = useState<GuideCategory[]>([]);
   const [guides, setGuides] = useState<GuideDetail[]>([]);
+  const [documentPosts, setDocumentPosts] = useState<CommunityPost[]>([]);
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
   const [personalizedProfile, setPersonalizedProfile] = useState<PersonalizedProfileInput>(readPersistedProfile);
   const [recommendationRule, setRecommendationRule] = useState<PersonalizedRecommendationRule | null>(null);
