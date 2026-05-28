@@ -7,6 +7,7 @@ import { Alert, AlertDescription } from "./ui/alert";
 import { User, ArrowLeft } from "lucide-react";
 import seoulMetroLogo from "../assets/logo.png";
 import { projectId, publicAnonKey } from "../utils/supabase/info";
+import { supabase } from "../utils/supabase/client";
 
 interface LoggedInUser {
   employeeId: string;
@@ -96,11 +97,44 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
     try {
       const normalizedEmployeeId = employeeId.trim();
       const normalizedName = name.trim();
+      const dummyEmail = `${normalizedEmployeeId}@metro.local`;
 
+      // 1. 사전 권한 확인 (기존 로직 유지)
       const isAuthorized = await validateEmployeeAuthorization(normalizedEmployeeId, normalizedName);
       if (!isAuthorized) {
         setError("등록된 사번/이름이 아닙니다. 관리자에게 문의해주세요.");
         return;
+      }
+
+      // 2. Supabase Auth 로그인/가입 시도
+      // 비밀번호는 사용자 이름(normalizedName)을 사용합니다. 
+      // (비밀번호 최소 길이는 Supabase 설정에서 3자 이하로 조정되어야 합니다.)
+      let { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: dummyEmail,
+        password: normalizedName,
+      });
+
+      // 사용자가 없는 경우 자동으로 가입 시도
+      if (authError && authError.message.includes("Invalid login credentials")) {
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email: dummyEmail,
+          password: normalizedName,
+          options: {
+            data: {
+              employee_id: normalizedEmployeeId,
+              name: normalizedName,
+            }
+          }
+        });
+        
+        if (signUpError) {
+          console.error("Auth SignUp error:", signUpError);
+          throw new Error("계정 생성 중 오류가 발생했습니다.");
+        }
+        authData = signUpData;
+      } else if (authError) {
+        console.error("Auth SignIn error:", authError);
+        throw new Error("인증 서버 연결 중 오류가 발생했습니다.");
       }
 
       const userStorageKey = `user_${normalizedEmployeeId}`;
@@ -115,6 +149,7 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
         isNewUser: !existingLocalUser
       };
 
+      // 3. 기존 에지 함수를 통한 사용자 정보 동기화 (authUserId 포함)
       const v = Date.now();
       const response = await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1/users?v=${v}`,
@@ -129,7 +164,8 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
           body: JSON.stringify({
             id: id,
             name: normalizedName,
-            employeeId: normalizedEmployeeId
+            employeeId: normalizedEmployeeId,
+            authUserId: authData.user?.id // 신규 발급된 UUID 전달
           })
         }
       );

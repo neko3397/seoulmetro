@@ -4,9 +4,11 @@ import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { MarkdownContent } from "./MarkdownContent";
 import { Textarea } from "./ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { apiRequest } from "../lib/api";
+import { normalizeChatQueryResult } from "../lib/chat";
 import type { ChatQueryResult } from "../types/content";
 
 const RETRIEVAL_SCOPE_OPTIONS = [
@@ -24,6 +26,14 @@ export function AISettingsManagement({ onUpdated }: AISettingsManagementProps) {
   const [reindexing, setReindexing] = useState(false);
   const [querying, setQuerying] = useState(false);
   const [logs, setLogs] = useState<any[]>([]);
+  const [logSummary, setLogSummary] = useState({
+    total: 0,
+    success: 0,
+    retrievalFailures: 0,
+    generationFailures: 0,
+    noContext: 0,
+    errors: 0,
+  });
   const [indexStatus, setIndexStatus] = useState({
     sourceCount: 0,
     chunkCount: 0,
@@ -74,6 +84,16 @@ export function AISettingsManagement({ onUpdated }: AISettingsManagementProps) {
         apiKeyConfigured: Boolean(provider.apiKeyConfigured),
       });
       setLogs(logsData.logs || []);
+      setLogSummary(
+        logsData.summary || {
+          total: 0,
+          success: 0,
+          retrievalFailures: 0,
+          generationFailures: 0,
+          noContext: 0,
+          errors: 0,
+        },
+      );
       setIndexStatus(
         indexData.status || {
           sourceCount: 0,
@@ -168,7 +188,7 @@ export function AISettingsManagement({ onUpdated }: AISettingsManagementProps) {
         alert(data.error);
         return;
       }
-      setTestResult(data);
+      setTestResult(normalizeChatQueryResult(data));
       await load();
     } catch (error) {
       console.error("Failed to run test query:", error);
@@ -194,6 +214,8 @@ export function AISettingsManagement({ onUpdated }: AISettingsManagementProps) {
         : prev.retrievalScope.filter((value) => value !== scope),
     }));
   };
+
+  const testSources = testResult?.sources || [];
 
   return (
     <div className="space-y-6">
@@ -355,8 +377,13 @@ export function AISettingsManagement({ onUpdated }: AISettingsManagementProps) {
           </Button>
           {testResult ? (
             <div className="space-y-4">
-              <div className="rounded-md border p-4 whitespace-pre-wrap text-sm">
-                {testResult.answer}
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] shadow-sm">
+                <div className="border-b border-slate-100 bg-[linear-gradient(90deg,#eff6ff_0%,#f8fafc_100%)] px-4 py-3 text-xs font-semibold tracking-[0.18em] text-slate-500 uppercase">
+                  Markdown Preview
+                </div>
+                <div className="p-4">
+                  <MarkdownContent value={testResult.answer} compact />
+                </div>
               </div>
               <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                 <span>상태: {testResult.status}</span>
@@ -365,14 +392,45 @@ export function AISettingsManagement({ onUpdated }: AISettingsManagementProps) {
                   사용량: {testResult.usage.usedToday}/{testResult.usage.dailyLimit}
                 </span>
                 <span>남은 횟수: {testResult.usage.remainingToday}</span>
+                {testResult.diagnostics?.failureStage ? (
+                  <span>실패 단계: {testResult.diagnostics.failureStage}</span>
+                ) : null}
               </div>
-              {testResult.sources.length ? (
+              {testResult.diagnostics?.retrieval ? (
+                <div className="grid gap-3 md:grid-cols-3">
+                  <div className="rounded-md border p-3 text-sm">
+                    <div className="text-muted-foreground">후보 / 재정렬 / 선택</div>
+                    <div className="font-medium">
+                      {testResult.diagnostics.retrieval.candidateCount} / {testResult.diagnostics.retrieval.rerankedCount} /{" "}
+                      {testResult.diagnostics.retrieval.selectedCount}
+                    </div>
+                  </div>
+                  <div className="rounded-md border p-3 text-sm">
+                    <div className="text-muted-foreground">최종 점수 / 원 검색 점수</div>
+                    <div className="font-medium">
+                      {Number(testResult.diagnostics.retrieval.topScore || 0).toFixed(3)} /{" "}
+                      {Number(testResult.diagnostics.retrieval.topRetrievalScore || 0).toFixed(3)}
+                    </div>
+                  </div>
+                  <div className="rounded-md border p-3 text-sm">
+                    <div className="text-muted-foreground">임계값 / 임베딩 사용</div>
+                    <div className="font-medium">
+                      {Number(testResult.diagnostics.retrieval.thresholdApplied || 0).toFixed(3)} /{" "}
+                      {testResult.diagnostics.retrieval.queryHasEmbedding ? "예" : "아니오"}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+              {testSources.length ? (
                 <div className="space-y-2">
-                  {testResult.sources.map((source) => (
-                    <div key={`${source.sourceId}-${source.target.id}`} className="rounded-md border p-3 text-sm">
+                  {testSources.map((source, index) => (
+                    <div
+                      key={`${source.sourceId}-${source.target.id}-${index}`}
+                      className="rounded-md border p-3 text-sm"
+                    >
                       <div className="font-medium">{source.title}</div>
                       <div className="text-muted-foreground">
-                        {source.sourceType} / 관련도 {source.score.toFixed(3)}
+                        {source.sourceType} / 관련도 {Number(source.score ?? 0).toFixed(3)}
                       </div>
                       <div className="mt-1 text-muted-foreground">{source.snippet}</div>
                     </div>
@@ -388,13 +446,32 @@ export function AISettingsManagement({ onUpdated }: AISettingsManagementProps) {
         <CardHeader>
           <CardTitle>최근 챗봇 로그</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-4">
+            <div className="rounded-md border p-4">
+              <div className="text-sm text-muted-foreground">총 로그</div>
+              <div className="text-2xl font-bold">{logSummary.total}</div>
+            </div>
+            <div className="rounded-md border p-4">
+              <div className="text-sm text-muted-foreground">성공</div>
+              <div className="text-2xl font-bold">{logSummary.success}</div>
+            </div>
+            <div className="rounded-md border p-4">
+              <div className="text-sm text-muted-foreground">검색 실패</div>
+              <div className="text-2xl font-bold">{logSummary.retrievalFailures}</div>
+            </div>
+            <div className="rounded-md border p-4">
+              <div className="text-sm text-muted-foreground">생성 실패</div>
+              <div className="text-2xl font-bold">{logSummary.generationFailures}</div>
+            </div>
+          </div>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>시각</TableHead>
                 <TableHead>질문</TableHead>
                 <TableHead>상태</TableHead>
+                <TableHead>실패 단계</TableHead>
                 <TableHead>모델</TableHead>
               </TableRow>
             </TableHeader>
@@ -404,6 +481,7 @@ export function AISettingsManagement({ onUpdated }: AISettingsManagementProps) {
                   <TableCell>{new Date(log.created_at).toLocaleString("ko-KR")}</TableCell>
                   <TableCell className="max-w-[320px] truncate">{log.question}</TableCell>
                   <TableCell>{log.status}</TableCell>
+                  <TableCell>{log.failure_stage || (log.status === "no_context" ? "retrieval" : "-")}</TableCell>
                   <TableCell>{log.model || "-"}</TableCell>
                 </TableRow>
               ))}

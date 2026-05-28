@@ -132,10 +132,38 @@ export interface ChatUsage {
   resetsAt: string;
 }
 
+export interface ChatDiagnostics {
+  failureStage?: "retrieval" | "generation" | null;
+  retrieval?: {
+    candidateCount: number;
+    rerankedCount: number;
+    selectedCount: number;
+    queryHasEmbedding: boolean;
+    thresholdApplied: number;
+    topScore: number;
+    topRetrievalScore: number;
+  };
+  generation?: {
+    usedModel: string;
+    fallbackUsed: boolean;
+  };
+}
+
 export interface ChatQueryResult {
   status: "success" | "no_context" | "disabled" | "rate_limited" | "error";
   answer: string;
   model: string;
   sources: ChatSource[];
   usage: ChatUsage;
+  diagnostics?: ChatDiagnostics;
+}
+
+export interface ChatHistoryEntry {
+  id: string;
+  employeeId?: string | null;
+  question: string;
+  answer: string;
+  model: string;
+  status: ChatQueryResult["status"];
+  createdAt: string;
 }

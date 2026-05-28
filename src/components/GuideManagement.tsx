@@ -10,8 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { apiRequest, apiRequestJson } from "../lib/api";
 import { notifyContentChanged } from "../lib/contentSync";
 import { buildGuideMarkdown, normalizeGuideMarkdown, parseGuideMarkdown } from "../lib/guideMarkdown";
-import { markdownToHtml } from "../app/utils";
 import type { GuideCategory, GuideDetail } from "../types/content";
+import { MarkdownContent } from "./MarkdownContent";
 
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
@@ -65,11 +65,6 @@ export function GuideManagement({ onUpdated }: GuideManagementProps) {
     () => parseGuideMarkdown(guideForm.markdownContent, { fallbackTitle: guideForm.title }),
     [guideForm.markdownContent, guideForm.title],
   );
-
-  const markdownPreviewHtml = useMemo(() => {
-    if (uploadKind !== "markdown") return "";
-    return markdownToHtml(guideForm.markdownContent);
-  }, [guideForm.markdownContent, uploadKind]);
 
   const load = async (preferredGuideId?: string) => {
     try {
@@ -466,10 +461,14 @@ export function GuideManagement({ onUpdated }: GuideManagementProps) {
               <div className="rounded-md border p-4">
                 <div className="mb-3 font-medium">Markdown 렌더링 미리보기</div>
                 {guideForm.markdownContent.trim() ? (
-                  <div
-                    className="space-y-4 leading-relaxed text-slate-700 [&_a]:break-all [&_blockquote]:my-4 [&_code]:font-mono [&_h2]:mt-8 [&_h2]:text-2xl [&_h2]:font-semibold [&_h3]:mt-6 [&_h3]:text-xl [&_h3]:font-semibold [&_h4]:mt-5 [&_h4]:text-lg [&_h4]:font-semibold [&_li]:ml-5 [&_li]:list-disc [&_li]:pl-1 [&_p]:my-4 [&_pre]:my-5 [&_ul]:my-4"
-                    dangerouslySetInnerHTML={{ __html: markdownPreviewHtml }}
-                  />
+                  <div className="overflow-hidden rounded-2xl border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)]">
+                    <div className="border-b border-slate-100 bg-[linear-gradient(90deg,#eff6ff_0%,#f8fafc_100%)] px-4 py-3 text-xs font-semibold tracking-[0.18em] text-slate-500 uppercase">
+                      Markdown Preview
+                    </div>
+                    <div className="p-5">
+                      <MarkdownContent value={guideForm.markdownContent} compact />
+                    </div>
+                  </div>
                 ) : (
                   <div className="text-sm text-muted-foreground">미리볼 Markdown 본문이 없습니다.</div>
                 )}

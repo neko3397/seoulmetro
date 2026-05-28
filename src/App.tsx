@@ -55,12 +55,6 @@ const EducationVideosPage = lazy(() =>
 const PersonalizedEducationPage = lazy(() =>
   import("./app/pages/PersonalizedEducationPage").then((module) => ({ default: module.PersonalizedEducationPage })),
 );
-const DocumentCategoriesPage = lazy(() =>
-  import("./app/pages/DocumentCategoriesPage").then((module) => ({ default: module.DocumentCategoriesPage })),
-);
-const DocumentListPage = lazy(() =>
-  import("./app/pages/DocumentListPage").then((module) => ({ default: module.DocumentListPage })),
-);
 const VideoDetailPage = lazy(() =>
   import("./app/pages/VideoDetailPage").then((module) => ({ default: module.VideoDetailPage })),
 );
@@ -107,7 +101,6 @@ export default function App() {
   const [videosByCategory, setVideosByCategory] = useState<Record<string, Video[]>>({});
   const [guideCategories, setGuideCategories] = useState<GuideCategory[]>([]);
   const [guides, setGuides] = useState<GuideDetail[]>([]);
-  const [documentPosts, setDocumentPosts] = useState<CommunityPost[]>([]);
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
   const [personalizedProfile, setPersonalizedProfile] = useState<PersonalizedProfileInput>(readPersistedProfile);
   const [recommendationRule, setRecommendationRule] = useState<PersonalizedRecommendationRule | null>(null);

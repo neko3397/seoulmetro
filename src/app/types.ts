@@ -14,8 +14,6 @@ export type ViewState =
   | "chatbot"
   | "notices"
   | "educationVideos"
-  | "documentDocs"
-  | "documentList"
   | "videoList"
   | "videoDetail"
   | "wikiDocs"

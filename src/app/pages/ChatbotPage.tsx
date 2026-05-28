@@ -1,11 +1,14 @@
-import { AlertCircle, Bot, Clock3, FileText, Loader2, MessageSquareWarning, SearchX } from "lucide-react";
-import { useMemo, useState } from "react";
-import { apiRequestJson } from "../../lib/api";
-import type { ChatQueryResult, ChatSource } from "../../types/content";
+import { AlertCircle, Bot, Clock3, Loader2, MessageSquareWarning, SearchX } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { apiBase, apiRequestJson, authHeaders } from "../../lib/api";
+import { normalizeChatHistoryEntries, normalizeChatQueryResult } from "../../lib/chat";
+import type { ChatHistoryEntry, ChatQueryResult, ChatSource, GuideCategory } from "../../types/content";
 import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import { MarkdownContent } from "../../components/MarkdownContent";
+import { Separator } from "../../components/ui/separator";
 import { Textarea } from "../../components/ui/textarea";
 
 interface ChatbotPageProps {
@@ -16,7 +19,7 @@ interface ChatbotPageProps {
 const STATUS_COPY: Record<ChatQueryResult["status"], { title: string; description: string }> = {
   success: {
     title: "답변이 준비되었습니다.",
-    description: "아래 출처와 함께 내용을 확인하세요.",
+    description: "아래 내용을 확인하세요.",
   },
   no_context: {
     title: "근거가 부족합니다.",
@@ -38,16 +41,53 @@ const STATUS_COPY: Record<ChatQueryResult["status"], { title: string; descriptio
 
 function formatResetTime(iso: string) {
   if (!iso) return "-";
-  return new Date(iso).toLocaleString("ko-KR", { hour12: false });
+  return new Date(iso).toLocaleString("ko-KR", { timeZone: "Asia/Seoul", hour12: false });
 }
 
-export function ChatbotPage({ currentUser, onSelectSource }: ChatbotPageProps) {
+export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: ChatbotPageProps) {
   const [question, setQuestion] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<ChatQueryResult | null>(null);
   const [requestError, setRequestError] = useState("");
+  const [history, setHistory] = useState<ChatHistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [categories, setCategories] = useState<GuideCategory[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState("");
 
   const statusCopy = useMemo(() => (result ? STATUS_COPY[result.status] : null), [result]);
+  const loadHistory = async () => {
+    if (!currentUser?.employeeId) {
+      setHistory([]);
+      return;
+    }
+
+    try {
+      setHistoryLoading(true);
+      const response = await apiRequestJson<{ history?: unknown[] }>(
+        `/chat/history?employeeId=${encodeURIComponent(currentUser.employeeId)}`,
+      );
+      setHistory(normalizeChatHistoryEntries(response.history));
+    } catch (error) {
+      console.error("Failed to load chat history:", error);
+      setHistory([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const loadCategories = async () => {
+    try {
+      const response = await apiRequestJson<{ categories?: GuideCategory[] }>("/document-categories");
+      setCategories(response.categories || []);
+    } catch (error) {
+      console.error("Failed to load document categories:", error);
+    }
+  };
+
+  useEffect(() => {
+    void loadHistory();
+    void loadCategories();
+  }, [currentUser?.employeeId]);
 
   const handleSubmit = async () => {
     if (!question.trim() || submitting) return;
@@ -55,38 +95,105 @@ export function ChatbotPage({ currentUser, onSelectSource }: ChatbotPageProps) {
     try {
       setSubmitting(true);
       setRequestError("");
-      const nextResult = await apiRequestJson<ChatQueryResult>("/chat/query", {
+      setResult(null);
+
+      const response = await fetch(`${apiBase}/chat/query`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...authHeaders,
         },
         body: JSON.stringify({
           question: question.trim(),
           employeeId: currentUser?.employeeId || null,
+          stream: true,
+          categoryId: selectedCategoryId || null, // 카테고리 필터 전송
         }),
       });
-      setResult(nextResult);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `API ${response.status} 오류가 발생했습니다.`);
+      }
+
+      const contentType = response.headers.get("Content-Type");
+      if (contentType && contentType.includes("application/json")) {
+        const jsonResult = await response.json();
+        setResult(normalizeChatQueryResult(jsonResult));
+        await loadHistory();
+        return;
+      }
+
+      // Streaming response
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("응답 스트림을 읽을 수 없습니다.");
+
+      const decoder = new TextDecoder();
+      let accumulatedAnswer = "";
+      
+      // 초기 상태 설정
+      setResult(normalizeChatQueryResult({
+        status: "success",
+        answer: "",
+      }));
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        
+        // JSON 구분자 \u241F 체크
+        if (chunk.includes("\u241F")) {
+          const parts = chunk.split("\u241F");
+          // \u241F 이전은 텍스트 청크일 수 있음
+          if (parts[0]) {
+            accumulatedAnswer += parts[0];
+          }
+          
+          // \u241F 이후는 JSON 메타데이터
+          const jsonPart = parts.slice(1).join("\u241F");
+          if (jsonPart) {
+            try {
+              const metadata = JSON.parse(jsonPart);
+              setResult(normalizeChatQueryResult({
+                ...metadata,
+                answer: accumulatedAnswer, // 답변은 누적된 것 유지
+              }));
+            } catch (e) {
+              console.error("Failed to parse final metadata:", e, jsonPart);
+              // 메타데이터 파싱 실패해도 지금까지의 답변은 유지
+              setResult(prev => prev ? { ...prev, answer: accumulatedAnswer } : null);
+            }
+          } else {
+            setResult(prev => prev ? { ...prev, answer: accumulatedAnswer } : null);
+          }
+        } else {
+          accumulatedAnswer += chunk;
+          setResult(prev => prev ? { ...prev, answer: accumulatedAnswer } : null);
+        }
+      }
+
+      await loadHistory();
     } catch (error) {
       console.error("Failed to query chatbot:", error);
       setResult(null);
       setRequestError(error instanceof Error ? error.message : "챗봇 응답 생성 중 오류가 발생했습니다.");
+      await loadHistory();
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <section className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+    <section className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[minmax(0,1fr)_320px] animate-fade-in-up">
       <div className="space-y-6">
-        <div className="space-y-3">
-          <Badge variant="secondary">AI 챗봇</Badge>
-          <h2 className="text-3xl font-bold text-slate-900">사내규정과 공지 기반 질의응답</h2>
-          <p className="text-slate-600">
-            사내규정과 발행된 공지를 근거로만 답변합니다. 근거가 부족하면 추측하지 않고 답변을 멈춥니다.
-          </p>
+        <div className="space-y-2 border-b border-slate-100 pb-4">
+          <h2 className="text-4xl font-extrabold tracking-tight bg-gradient-to-r from-blue-700 via-indigo-600 to-cyan-500 bg-clip-text text-transparent">AI 챗봇</h2>
+          <p className="text-slate-500 font-medium">사내규정과 중요 업무 공지사항을 기반으로 신속하고 정확한 실시간 질의응답을 제공합니다.</p>
         </div>
 
-        <Card className="border-slate-200 bg-white/95 shadow-sm">
+        <Card className="premium-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-xl">
               <Bot className="h-5 w-5 text-blue-600" />
@@ -94,6 +201,39 @@ export function ChatbotPage({ currentUser, onSelectSource }: ChatbotPageProps) {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {categories.length > 0 ? (
+              <div className="space-y-2">
+                <label className="text-xs font-semibold tracking-wider text-slate-500 uppercase">검색 범위 제한</label>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCategoryId("")}
+                    className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-all duration-200 border ${
+                      selectedCategoryId === ""
+                        ? "bg-slate-900 border-slate-900 text-white shadow-sm"
+                        : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    전체 문서
+                  </button>
+                  {categories.map((category) => (
+                    <button
+                      key={category.id}
+                      type="button"
+                      onClick={() => setSelectedCategoryId(category.id)}
+                      className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-all duration-200 border ${
+                        selectedCategoryId === category.id
+                          ? "bg-slate-900 border-slate-900 text-white shadow-sm"
+                          : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                      }`}
+                    >
+                      {category.title}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
             <Textarea
               rows={5}
               value={question}
@@ -145,65 +285,64 @@ export function ChatbotPage({ currentUser, onSelectSource }: ChatbotPageProps) {
                 <CardTitle className="text-xl">답변</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="whitespace-pre-wrap rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-7 text-slate-700">
-                  {result.answer}
+                <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] shadow-sm">
+                  <div className="border-b border-slate-100 bg-[linear-gradient(90deg,#eff6ff_0%,#f8fafc_100%)] px-5 py-3 text-xs font-semibold tracking-[0.18em] text-slate-500 uppercase">
+                    Markdown Response
+                  </div>
+                  <div className="p-5 sm:p-6">
+                    <MarkdownContent value={result.answer} />
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-2 text-xs text-slate-500">
                   <Badge variant="outline">모델 {result.model}</Badge>
                   <Badge variant="outline">오늘 {result.usage.usedToday}/{result.usage.dailyLimit}회 사용</Badge>
                   <Badge variant="outline">남은 횟수 {result.usage.remainingToday}회</Badge>
+                  <Badge variant="outline">초기화 시간 {formatResetTime(result.usage.resetsAt)}</Badge>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="border-slate-200 bg-white shadow-sm">
-              <CardHeader>
-                <CardTitle className="text-xl">근거 문서</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {result.sources.length ? (
-                  result.sources.map((source) => (
-                    <button
-                      key={`${source.sourceId}-${source.target.id}`}
-                      type="button"
-                      onClick={() => onSelectSource(source)}
-                      className="block w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left transition hover:border-blue-300 hover:bg-white"
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="secondary">{source.sourceType === "guide" ? "사내규정" : "공지"}</Badge>
-                        <span className="text-sm text-slate-500">관련도 {source.score.toFixed(3)}</span>
-                      </div>
-                      <p className="mt-3 font-semibold text-slate-900">{source.title}</p>
-                      <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">{source.snippet}</p>
-                    </button>
-                  ))
-                ) : (
-                  <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
-                    표시할 출처가 없습니다.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
           </div>
         ) : null}
-      </div>
 
-      <Card className="h-fit border-slate-200 bg-slate-50/90 shadow-sm lg:sticky lg:top-24">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <FileText className="h-4 w-4 text-blue-600" />
-            사용 안내
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm leading-6 text-slate-600">
-          <p>발행된 사내규정과 공지 문서만 검색합니다.</p>
-          <p>근거가 부족한 질문은 답변하지 않습니다.</p>
-          <p>
-            오늘 남은 질문 횟수는 결과 카드에서 확인할 수 있으며, 다음 초기화 시각은 {formatResetTime(result?.usage.resetsAt || "")}
-            입니다.
-          </p>
-        </CardContent>
-      </Card>
+        <Card className="border-slate-200 bg-white shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-xl">과거 채팅 기록</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {historyLoading ? (
+              <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+                기록을 불러오는 중입니다.
+              </div>
+            ) : history.length ? (
+              history.map((entry) => (
+                <div key={entry.id} className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                    <Badge variant="outline">{entry.status}</Badge>
+                    <Badge variant="outline">모델 {entry.model}</Badge>
+                    <span>{formatResetTime(entry.createdAt)}</span>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold tracking-[0.16em] text-slate-500 uppercase">Question</p>
+                    <p className="text-sm leading-7 text-slate-800">{entry.question}</p>
+                  </div>
+                  <Separator />
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold tracking-[0.16em] text-slate-500 uppercase">Answer</p>
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                      <MarkdownContent value={entry.answer} compact />
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+                아직 저장된 채팅 기록이 없습니다.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+    </div>
     </section>
   );
 }

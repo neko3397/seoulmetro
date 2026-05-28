@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { registerSW } from "virtual:pwa-register";
 import App from "./App.tsx";
 import "./index.css";
+import "./styles/globals.css";
 import { projectId, publicAnonKey } from './utils/supabase/info';
 
 // Expose supabase keys for client-side convenience in dev (only if window is available)
@@ -12,19 +13,10 @@ if (typeof window !== 'undefined') {
 }
 
 if (import.meta.env.PROD && typeof window !== "undefined" && "serviceWorker" in navigator) {
-  let isReloadingForUpdate = false;
-
-  const reloadForUpdate = () => {
-    if (isReloadingForUpdate) return;
-    isReloadingForUpdate = true;
-    window.location.reload();
-  };
-
-  const updateSW = registerSW({
+  registerSW({
     immediate: true,
     onNeedRefresh() {
-      if (isReloadingForUpdate) return;
-      void updateSW(true);
+      console.info("A new app version is available and will be used on the next visit.");
     },
     onRegisteredSW(_swUrl, registration) {
       if (!registration) return;
@@ -45,8 +37,6 @@ if (import.meta.env.PROD && typeof window !== "undefined" && "serviceWorker" in 
       console.error("Service worker registration failed", error);
     },
   });
-
-  navigator.serviceWorker.addEventListener("controllerchange", reloadForUpdate);
 }
 
 createRoot(document.getElementById("root")!).render(<App />);

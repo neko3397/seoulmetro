@@ -152,7 +152,7 @@ function PdfInlineRenderer({ url, title }: PdfInlineRendererProps) {
         });
         const pdf = await loadingTask.promise;
         const renderedPages: string[] = [];
-        const pageLimit = samsungInternet ? 1 : pdf.numPages;
+        const pageLimit = pdf.numPages;
 
         for (let pageNumber = 1; pageNumber <= pageLimit; pageNumber += 1) {
           const page = await pdf.getPage(pageNumber);
@@ -212,12 +212,6 @@ function PdfInlineRenderer({ url, title }: PdfInlineRendererProps) {
         <div className="rounded-[1.5rem] border border-red-200 bg-red-50 px-6 py-5 text-sm text-red-700">{loadError}</div>
       ) : null}
 
-      {!isLoading && !loadError && samsungInternet ? (
-        <div className="rounded-[1.25rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          삼성 인터넷에서는 호환성을 위해 첫 페이지만 미리보기로 표시합니다.
-        </div>
-      ) : null}
-
       {!isLoading && !loadError
         ? pageImages.map((pageImage, index) => (
           <figure
@@ -250,12 +244,12 @@ export function CommunityPostDetailPage({ post }: CommunityPostDetailPageProps) 
   ];
 
   return (
-    <div className="mx-auto max-w-7xl space-y-8">
+    <div className="mx-auto max-w-7xl space-y-8 animate-fade-in-up">
       <section className="rounded-[2.1rem] bg-[linear-gradient(135deg,rgba(14,165,233,0.22),rgba(59,130,246,0.18),rgba(255,255,255,0.92))] p-[1px] shadow-[0_26px_80px_-48px_rgba(15,23,42,0.5)]">
         <div className="rounded-[calc(2.1rem-1px)] bg-gradient-to-br from-white via-slate-50 to-blue-50 px-4 py-5 md:px-5 md:py-6 lg:px-6 lg:py-6">
           <div className="space-y-4">
             <div className="space-y-3">
-              <h2 className="text-3xl leading-tight font-bold tracking-tight text-slate-950 md:text-4xl">{post.title}</h2>
+              <h2 className="text-3xl leading-tight font-extrabold tracking-tight text-slate-950 md:text-4xl bg-gradient-to-r from-blue-800 via-indigo-700 to-cyan-600 bg-clip-text text-transparent">{post.title}</h2>
               {post.summary ? (
                 <p className="max-w-3xl text-lg leading-8 font-medium text-slate-600">{post.summary}</p>
               ) : null}

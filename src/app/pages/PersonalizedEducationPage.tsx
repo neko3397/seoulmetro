@@ -21,13 +21,13 @@ export function PersonalizedEducationPage({
   onSelectVideo,
 }: PersonalizedEducationPageProps) {
   return (
-    <div className="mx-auto max-w-3xl space-y-8">
-      <div className="space-y-3">
-        <Badge variant="secondary">나를 위한 맞춤형 교육</Badge>
-        <h2 className="text-3xl font-bold text-slate-900">직책과 경력 구분에 맞는 추천 영상</h2>
+    <div className="mx-auto max-w-3xl space-y-8 animate-fade-in-up">
+      <div className="space-y-2 border-b border-slate-100 pb-4">
+        <h2 className="text-4xl font-extrabold tracking-tight bg-gradient-to-r from-blue-700 via-indigo-600 to-cyan-500 bg-clip-text text-transparent">맞춤형 교육</h2>
+        <p className="text-slate-500 font-medium">나의 직책과 경력 구분에 맞춰 인공지능이 제안하는 최적의 학습 추천 영상 리스트입니다.</p>
       </div>
 
-      <Card>
+      <Card className="premium-card border-slate-100">
         <CardHeader>
           <CardTitle>추천 기준 선택</CardTitle>
           <CardDescription>현재 내 조건에 맞는 교육 영상을 바로 확인하세요.</CardDescription>

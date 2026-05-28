@@ -23,11 +23,10 @@ export function VideoDetailPage({
   if (!selectedVideo) return null;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-8">
-      <div className="space-y-2">
-        <Badge variant="secondary">영상 상세페이지</Badge>
-        <h2 className="text-3xl font-bold text-slate-900">{selectedVideo.title}</h2>
-        <p className="text-sm text-slate-500">
+    <div className="mx-auto max-w-6xl space-y-8 animate-fade-in-up">
+      <div className="space-y-2 border-b border-slate-100 pb-4">
+        <h2 className="text-4xl font-extrabold tracking-tight bg-gradient-to-r from-blue-700 via-indigo-600 to-cyan-500 bg-clip-text text-transparent">{selectedVideo.title}</h2>
+        <p className="text-sm text-slate-500 font-medium">
           {formatDateTime(selectedVideo.updatedAt || selectedVideo.createdAt)} ·{" "}
           {formatDurationLabel(selectedVideo.duration)}
         </p>
@@ -36,7 +35,7 @@ export function VideoDetailPage({
       <div className="grid gap-8 lg:grid-cols-[1.8fr_1fr]">
         <div className="space-y-6">
           <VideoPlayer video={selectedVideo} categoryId={selectedVideo.categoryId || selectedTopicId} />
-          <Card>
+          <Card className="premium-card border-slate-100">
             <CardHeader>
               <CardTitle>영상 설명</CardTitle>
             </CardHeader>
@@ -47,7 +46,7 @@ export function VideoDetailPage({
         </div>
         <div className="space-y-6">
           <VideoDescription video={selectedVideo} />
-          <Card>
+          <Card className="premium-card border-slate-100">
             <CardHeader>
               <CardTitle>관련 영상</CardTitle>
               <CardDescription>같은 주제에서 이어서 볼 수 있는 콘텐츠입니다.</CardDescription>

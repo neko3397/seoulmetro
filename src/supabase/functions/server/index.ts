@@ -25,6 +25,41 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
 );
 
+async function getAuthUser(c: any) {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader) return null;
+  const token = authHeader.replace("Bearer ", "");
+  if (!token || token === Deno.env.get("SUPABASE_ANON_KEY")) return null;
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    if (error || !user) return null;
+    return user;
+  } catch {
+    return null;
+  }
+}
+
+async function getEmployeeIdFromAuth(c: any) {
+  const user = await getAuthUser(c);
+  if (!user) return null;
+
+  const { data: userData } = await supabase
+    .from("users")
+    .select("employee_id")
+    .eq("auth_user_id", user.id)
+    .maybeSingle();
+
+  if (userData?.employee_id) return userData.employee_id;
+
+  const { data: adminData } = await supabase
+    .from("admins")
+    .select("employee_id")
+    .eq("auth_user_id", user.id)
+    .maybeSingle();
+
+  return adminData?.employee_id || null;
+}
+
 const VIDEO_BUCKET = "make-a8898ff1-videos";
 const IMAGE_BUCKET = "make-a8898ff1-images";
 const DOCUMENT_BUCKET = "make-a8898ff1-documents";
@@ -34,8 +69,14 @@ const DEFAULT_CHAT_MODEL = "gpt-5.4-mini";
 const DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small";
 const DEFAULT_RETRIEVAL_SCOPE = ["guides", "notices"];
 const DEFAULT_DAILY_QUESTION_LIMIT = 20;
+const MAX_CHAT_HISTORY_PER_USER = 10;
+const INITIAL_RETRIEVAL_LIMIT = 24;
+const RERANK_LIMIT = 8;
+const FINAL_CONTEXT_LIMIT = 6;
+const EMBEDDING_RERANK_THRESHOLD = 0.18;
+const KEYWORD_RERANK_THRESHOLD = 0.22;
 const DEFAULT_SYSTEM_PROMPT =
-  "당신은 사내규정과 발행된 공지를 근거로만 답하는 챗봇입니다. 제공된 문서 범위를 벗어난 추측은 하지 말고, 근거가 부족하면 모른다고 답하세요. 답변 마지막에는 참고한 문서를 짧게 정리하세요.";
+  "당신은 제공된 문서 범위를 벗어난 추측은 하지 말고, 근거가 부족하면 모른다고 답하는 챗봇입니다. 답변에서 참고 문서를 언급할 때는 반드시 제공된 실제 문서 제목을 그대로 사용하고, '문서 1', '문서 2' 같은 일반 번호 라벨은 쓰지 마세요. 답변 마지막에는 참고한 문서를 실제 제목 기준으로 짧게 정리하세요.";
 const DOCUMENT_SIGNED_URL_TTL = 60 * 60 * 24 * 7;
 const ALLOWED_DOCUMENT_TYPES = new Map([
   ["application/pdf", "pdf"],
@@ -317,20 +358,325 @@ async function assertKnownUser(employeeId: string, name?: string | null) {
   return user;
 }
 
-function chunkText(text: string, chunkSize: number, overlap: number) {
-  const normalized = String(text || "").trim();
-  if (!normalized) return [];
-  const chunks: string[] = [];
-  let start = 0;
-  const safeChunk = Math.max(200, chunkSize || 800);
-  const safeOverlap = Math.max(0, Math.min(safeChunk - 50, overlap || 120));
-  while (start < normalized.length) {
-    const end = Math.min(normalized.length, start + safeChunk);
-    chunks.push(normalized.slice(start, end));
-    if (end >= normalized.length) break;
-    start = end - safeOverlap;
+function normalizeChunkText(value: unknown) {
+  return String(value || "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function splitBlockIntoUnits(block: string, maxLength: number) {
+  const normalizedBlock = normalizeChunkText(block);
+  if (!normalizedBlock) return [];
+  if (normalizedBlock.length <= maxLength) return [normalizedBlock];
+
+  const lines = normalizedBlock
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const listLikeLines = lines.filter((line) => /^([\-*•]\s+|\d+[.)]\s+)/.test(line));
+  if (listLikeLines.length >= 2 && listLikeLines.length === lines.length) {
+    const groups: string[] = [];
+    for (const line of listLikeLines) {
+      const current = groups[groups.length - 1] || "";
+      const candidate = current ? `${current}\n${line}` : line;
+      if (!current) {
+        groups.push(line);
+        continue;
+      }
+      if (candidate.length <= maxLength) {
+        groups[groups.length - 1] = candidate;
+        continue;
+      }
+      groups.push(line);
+    }
+    return groups;
   }
+
+  const sentenceUnits = normalizedBlock
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((unit) => unit.trim())
+    .filter(Boolean);
+  if (sentenceUnits.length > 1) {
+    const grouped: string[] = [];
+    let current = "";
+    for (const sentence of sentenceUnits) {
+      if (!current) {
+        current = sentence;
+        continue;
+      }
+      if (`${current} ${sentence}`.length <= maxLength) {
+        current = `${current} ${sentence}`;
+        continue;
+      }
+      grouped.push(current);
+      current = sentence;
+    }
+    if (current) grouped.push(current);
+    return grouped.flatMap((unit) => (unit.length > maxLength ? splitBlockIntoUnits(unit, Math.max(120, Math.floor(maxLength * 0.75))) : [unit]));
+  }
+
+  const slices: string[] = [];
+  let start = 0;
+  while (start < normalizedBlock.length) {
+    const end = Math.min(normalizedBlock.length, start + maxLength);
+    slices.push(normalizedBlock.slice(start, end).trim());
+    if (end >= normalizedBlock.length) break;
+    start = end;
+  }
+  return slices.filter(Boolean);
+}
+
+function buildSemanticChunks(text: string, chunkSize: number, overlap: number) {
+  const normalized = normalizeChunkText(text);
+  if (!normalized) return [];
+
+  const safeChunk = Math.max(240, chunkSize || 800);
+  const safeOverlap = Math.max(0, Math.min(safeChunk - 80, overlap || 120));
+  const rawBlocks = normalized
+    .split(/\n\s*\n/)
+    .map((block) => normalizeChunkText(block))
+    .filter(Boolean);
+  const units = rawBlocks.flatMap((block) => splitBlockIntoUnits(block, Math.max(160, safeChunk - 80)));
+  if (!units.length) return [normalized];
+
+  const chunks: string[] = [];
+  let cursor = 0;
+
+  while (cursor < units.length) {
+    const chunkUnits: string[] = [];
+    let chunkLength = 0;
+    let nextCursor = cursor;
+
+    while (nextCursor < units.length) {
+      const unit = units[nextCursor];
+      const separatorLength = chunkUnits.length > 0 ? 2 : 0;
+      if (chunkUnits.length > 0 && chunkLength + separatorLength + unit.length > safeChunk) break;
+      chunkUnits.push(unit);
+      chunkLength += separatorLength + unit.length;
+      nextCursor += 1;
+    }
+
+    if (!chunkUnits.length) {
+      chunkUnits.push(units[nextCursor]);
+      nextCursor += 1;
+    }
+
+    chunks.push(chunkUnits.join("\n\n"));
+    if (nextCursor >= units.length) break;
+
+    let overlapLength = 0;
+    let overlapCount = 0;
+    for (let index = chunkUnits.length - 1; index >= 0; index -= 1) {
+      const unitLength = chunkUnits[index].length + (overlapCount > 0 ? 2 : 0);
+      if (overlapCount > 0 && overlapLength + unitLength > safeOverlap) break;
+      overlapLength += unitLength;
+      overlapCount += 1;
+    }
+
+    cursor = Math.max(cursor + 1, nextCursor - overlapCount);
+  }
+
   return chunks;
+}
+
+function getDocumentTypeLabel(sourceType: string, postType?: string | null) {
+  if (sourceType === "guide") return "사내규정";
+  if (postType === "notice") return "공지";
+  if (postType === "document") return "문서 게시물";
+  return "공지/문서";
+}
+
+function stripKoreanParticles(word: string): string {
+  const particleRegex = /(은|는|이|가|을|를|의|에|에서|로|으로|과|와|도|만|나|이나|부터|까지|하고|이며|이다|였다)$/;
+  return word.replace(particleRegex, "").trim();
+}
+
+function normalizeSearchText(value: unknown) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tokenizeSearchTerms(value: unknown) {
+  const rawTokens = normalizeSearchText(value)
+    .split(" ")
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2);
+
+  const cleanTokens = rawTokens.map(stripKoreanParticles).filter((token) => token.length >= 2);
+
+  return Array.from(new Set([...rawTokens, ...cleanTokens]));
+}
+
+function buildSectionAwareChunks(source: any, settings: any) {
+  const metadata = source.metadata || {};
+  const rawSections = Array.isArray(metadata.sections) ? metadata.sections : [];
+  const sections = rawSections.length
+    ? rawSections
+    : [
+        {
+          id: metadata.sectionId || `${source.id}_section_0`,
+          title: metadata.sectionTitle || source.title,
+          content: source.content_text,
+          order: 0,
+        },
+      ];
+
+  const chunkRows: any[] = [];
+
+  for (const [sectionIndex, section] of sections.entries()) {
+    const sectionTitle = String(section?.title || source.title || "본문").trim() || source.title || "본문";
+    const sectionContent = String(section?.content || "").trim();
+    if (!sectionContent) continue;
+    const sectionPath = Array.isArray(section?.pathTitles)
+      ? section.pathTitles.map((value: unknown) => String(value || "").trim()).filter(Boolean)
+      : [];
+    const sectionPathText = sectionPath.length ? sectionPath.join(" > ") : sectionTitle;
+    const pieces = buildSemanticChunks(sectionContent, settings.chunk_size, settings.chunk_overlap);
+    const formattedPieces = pieces.length ? pieces : [sectionContent];
+
+    // Parent Content: 전체 섹션의 정보와 전체 내용을 데코레이션하여 LLM 주입용으로 사용
+    const decoratedParentContent = [
+      `문서 제목: ${source.title}`,
+      metadata.documentTypeLabel ? `문서 유형: ${metadata.documentTypeLabel}` : "",
+      sectionPathText ? `섹션 경로: ${sectionPathText}` : "",
+      sectionTitle && sectionTitle !== source.title ? `섹션 제목: ${sectionTitle}` : "",
+      "",
+      sectionContent,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    for (const [pieceIndex, piece] of formattedPieces.entries()) {
+      const chunkTitle =
+        formattedPieces.length > 1 ? `${sectionTitle} (${pieceIndex + 1}/${formattedPieces.length})` : sectionTitle;
+      const decoratedContent = [
+        `문서 제목: ${source.title}`,
+        metadata.documentTypeLabel ? `문서 유형: ${metadata.documentTypeLabel}` : "",
+        sectionPathText ? `섹션 경로: ${sectionPathText}` : "",
+        sectionTitle && sectionTitle !== source.title ? `섹션 제목: ${sectionTitle}` : "",
+        "",
+        piece,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      chunkRows.push({
+        content: decoratedContent,
+        parentContent: decoratedParentContent, // Parent-Child 청킹 지원
+        metadata: {
+          ...metadata,
+          documentTitle: source.title,
+          sectionTitle,
+          sectionPath,
+          sectionPathText,
+          sectionId: String(section?.id || `${source.id}_section_${sectionIndex}`),
+          sectionParentId: section?.parentId ? String(section.parentId) : null,
+          sectionSlug: section?.slug ? String(section.slug) : null,
+          sectionOrder: Number(section?.order ?? sectionIndex),
+          sectionDepth: Number(section?.depth ?? 0),
+          chunkTitle,
+          chunkOrder: pieceIndex,
+          sectionChunkCount: formattedPieces.length,
+        },
+      });
+    }
+  }
+
+  return chunkRows;
+}
+
+function computeIntentBoost(question: string, metadata: any) {
+  const normalizedQuestion = normalizeSearchText(question);
+  const documentType = String(metadata?.documentType || "");
+  const label = normalizeSearchText(metadata?.documentTypeLabel || "");
+
+  let boost = 0;
+  if ((normalizedQuestion.includes("공지") || normalizedQuestion.includes("안내")) && (documentType === "notice" || label.includes("공지"))) {
+    boost += 0.08;
+  }
+  if ((normalizedQuestion.includes("규정") || normalizedQuestion.includes("절차") || normalizedQuestion.includes("매뉴얼")) && documentType === "guide") {
+    boost += 0.08;
+  }
+  if (normalizedQuestion.includes("문서") && (documentType === "document" || label.includes("문서"))) {
+    boost += 0.05;
+  }
+  return boost;
+}
+
+function rerankRetrievedChunks(question: string, chunks: any[], hasEmbedding: boolean) {
+  const terms = tokenizeSearchTerms(question);
+  const normalizedQuestion = normalizeSearchText(question);
+
+  // 1. 개별 청크에 대한 기본 vectorScore 및 lexicalScore 계산
+  const scoredList = (chunks || []).map((chunk) => {
+    const metadata = chunk.metadata || {};
+    const retrievalScore = Number(chunk.score || 0);
+    const haystack = normalizeSearchText(
+      [
+        chunk.content,
+        metadata.title,
+        metadata.documentTitle,
+        metadata.sectionTitle,
+        metadata.chunkTitle,
+        metadata.documentTypeLabel,
+      ].join(" "),
+    );
+    const titleText = normalizeSearchText(
+      [metadata.documentTitle, metadata.sectionTitle, metadata.chunkTitle, metadata.documentTypeLabel].join(" "),
+    );
+    const matchedTerms = terms.filter((term) => haystack.includes(term));
+    const matchedTitleTerms = terms.filter((term) => titleText.includes(term));
+    const coverage = terms.length ? matchedTerms.length / terms.length : 0;
+    const titleCoverage = terms.length ? matchedTitleTerms.length / terms.length : 0;
+    const exactQuestionMatch = normalizedQuestion.length >= 4 && haystack.includes(normalizedQuestion) ? 1 : 0;
+    const lexicalScore = coverage * 0.65 + titleCoverage * 0.25 + exactQuestionMatch * 0.1;
+    const vectorScore = hasEmbedding ? Math.max(0, retrievalScore) : Math.min(1, coverage * 0.7 + titleCoverage * 0.3);
+
+    return {
+      ...chunk,
+      retrievalScore,
+      vectorScore,
+      lexicalScore,
+      matchedTerms,
+    };
+  });
+
+  // 2. 벡터 점수 기반으로 정렬하여 랭크 매김
+  const vectorRanked = [...scoredList].sort((a, b) => b.vectorScore - a.vectorScore);
+  const vectorRanks = new Map<string, number>();
+  vectorRanked.forEach((chunk, index) => {
+    vectorRanks.set(chunk.id, index + 1);
+  });
+
+  // 3. 키워드 점수 기반으로 정렬하여 랭크 매김
+  const lexicalRanked = [...scoredList].sort((a, b) => b.lexicalScore - a.lexicalScore);
+  const lexicalRanks = new Map<string, number>();
+  lexicalRanked.forEach((chunk, index) => {
+    lexicalRanks.set(chunk.id, index + 1);
+  });
+
+  // 4. RRF (Reciprocal Rank Fusion) 계산 및 정렬 (k = 60)
+  return scoredList
+    .map((chunk) => {
+      const vRank = vectorRanks.get(chunk.id) || 100;
+      const lRank = lexicalRanks.get(chunk.id) || 100;
+      const rrfScore = (1 / (60 + vRank)) + (1 / (60 + lRank));
+      const intentBoost = computeIntentBoost(question, chunk.metadata);
+      // RRF 점수에 Intent Boost 결합
+      const rerankScore = rrfScore + intentBoost;
+
+      return {
+        ...chunk,
+        rrfScore,
+        rerankScore,
+      };
+    })
+    .sort((a, b) => b.rerankScore - a.rerankScore);
 }
 
 function normalizeRetrievalScope(value: unknown) {
@@ -374,13 +720,16 @@ function buildChatSources(chunks: any[]) {
   for (const chunk of chunks || []) {
     const metadata = chunk.metadata || {};
     const existing = sourceMap.get(chunk.source_id);
-    const nextSnippet = String(chunk.content || "").replace(/\s+/g, " ").trim().slice(0, 220);
+    const snippetBody = String(chunk.content || "").replace(/\s+/g, " ").trim().slice(0, 220);
+    const sectionTitle =
+      metadata.sectionTitle && metadata.sectionTitle !== metadata.documentTitle ? `${metadata.sectionTitle}: ` : "";
+    const nextSnippet = `${sectionTitle}${snippetBody}`.slice(0, 220);
     const nextSource = {
       sourceId: chunk.source_id,
       sourceType: metadata.sourceType === "guide" ? "guide" : "community_post",
       title: String(metadata.title || "문서"),
       snippet: nextSnippet,
-      score: Number(chunk.score || 0),
+      score: Number(chunk.rerankScore || chunk.score || 0),
       target: {
         type: metadata.targetType === "guide" ? "guide" : "post",
         id: String(metadata.targetId || metadata.guideId || metadata.postId || ""),
@@ -810,12 +1159,12 @@ async function upsertChatSettings(patch: any) {
 async function buildDocumentSources() {
   const { data: guides, error: guideError } = await supabase
     .from("guides")
-    .select("id, title, description, is_published");
+    .select("id, title, description, is_published, category_id");
   if (guideError) throw guideError;
 
   const { data: sections, error: sectionError } = await supabase
     .from("guide_sections")
-    .select("id, guide_id, title, markdown_content, slug, sort_order");
+    .select("id, guide_id, parent_id, title, markdown_content, slug, sort_order, depth");
   if (sectionError) throw sectionError;
 
   const { data: posts, error: postError } = await supabase
@@ -832,6 +1181,26 @@ async function buildDocumentSources() {
   const sources: any[] = [];
   for (const guide of (guides || []).filter((guide) => guide.is_published)) {
     const guideSections = (byGuide.get(guide.id) || []).sort((a, b) => a.sort_order - b.sort_order);
+    const sectionMap = new Map(guideSections.map((section) => [section.id, section]));
+    const sectionPathCache = new Map<string, string[]>();
+    const getSectionPathTitles = (section: any) => {
+      if (!section?.id) return [String(section?.title || guide.title || "본문").trim()].filter(Boolean);
+      if (sectionPathCache.has(section.id)) return sectionPathCache.get(section.id) || [];
+
+      const pathTitles: string[] = [];
+      const seenIds = new Set<string>();
+      let current = section;
+      while (current?.id && !seenIds.has(current.id)) {
+        seenIds.add(current.id);
+        const title = String(current.title || "").trim();
+        if (title) pathTitles.unshift(title);
+        current = current.parent_id ? sectionMap.get(current.parent_id) : null;
+      }
+
+      const normalizedPath = pathTitles.length ? pathTitles : [String(section?.title || guide.title || "본문").trim()].filter(Boolean);
+      sectionPathCache.set(section.id, normalizedPath);
+      return normalizedPath;
+    };
     const content = [
       guide.title,
       guide.description || "",
@@ -845,13 +1214,27 @@ async function buildDocumentSources() {
       content_text: content,
       metadata: {
         title: guide.title,
+        categoryId: guide.category_id, // categoryId 추가
         sourceType: "guide",
         targetType: "guide",
         targetId: guide.id,
         guideId: guide.id,
+        documentType: "guide",
+        documentTypeLabel: getDocumentTypeLabel("guide"),
+        description: guide.description || "",
         scope: "guides",
         isPublished: true,
         sectionIds: guideSections.map((section) => section.id),
+        sections: guideSections.map((section, index) => ({
+          id: section.id,
+          parentId: section.parent_id,
+          slug: section.slug,
+          title: section.title,
+          content: section.markdown_content,
+          order: index,
+          depth: Number(section.depth || 0),
+          pathTitles: getSectionPathTitles(section),
+        })),
       },
     });
   }
@@ -875,13 +1258,34 @@ async function buildDocumentSources() {
       content_text: content,
       metadata: {
         title: post.title,
+        categoryId: post.post_type || "notice", // categoryId 추가
         sourceType: "community_post",
         targetType: "post",
         targetId: post.id,
         postId: post.id,
         postType: post.post_type,
+        documentType: post.post_type || "notice",
+        documentTypeLabel: getDocumentTypeLabel("community_post", post.post_type),
         scope: "notices",
         isPublished: true,
+        sections: [
+          {
+            id: `${post.id}_summary`,
+            title: "요약",
+            content: post.summary || "",
+            order: 0,
+            depth: 0,
+            pathTitles: ["요약"],
+          },
+          {
+            id: `${post.id}_content`,
+            title: "본문",
+            content: post.content || "",
+            order: 1,
+            depth: 0,
+            pathTitles: ["본문"],
+          },
+        ].filter((section) => String(section.content || "").trim()),
       },
     });
   }
@@ -933,18 +1337,20 @@ async function rebuildIndex() {
     const { error: sourceError } = await supabase.from("document_sources").insert(sourceRow);
     if (sourceError) throw sourceError;
 
-    const chunks = chunkText(source.content_text, settings.chunk_size, settings.chunk_overlap);
+    const chunks = buildSectionAwareChunks(source, settings);
     for (let index = 0; index < chunks.length; index += 1) {
+      const chunk = chunks[index];
       const embedding = Deno.env.get("OPENAI_API_KEY")
-        ? await generateEmbedding(chunks[index], settings)
+        ? await generateEmbedding(chunk.content, settings)
         : null;
       const chunkRow = {
         id: `${source.id}_chunk_${index}`,
         source_id: source.id,
         chunk_index: index,
-        content: chunks[index],
+        content: chunk.content,
+        parent_content: chunk.parentContent, // Parent-Child 지원
         embedding,
-        metadata: source.metadata,
+        metadata: chunk.metadata,
         created_at: now,
         updated_at: now,
       };
@@ -987,6 +1393,13 @@ async function getIndexStatus() {
   };
 }
 
+function makeChatPipelineError(message: string, failureStage: "retrieval" | "generation", diagnostics?: any) {
+  const error = new Error(message) as Error & { failureStage?: string; diagnostics?: any };
+  error.failureStage = failureStage;
+  error.diagnostics = diagnostics;
+  return error;
+}
+
 async function getDailyChatUsage(settings: any, employeeId: string | null) {
   const bounds = getSeoulDayBounds();
   if (!employeeId) {
@@ -1005,7 +1418,7 @@ async function getDailyChatUsage(settings: any, employeeId: string | null) {
   return makeChatUsage(settings.daily_question_limit, count || 0, bounds.end);
 }
 
-async function createChatAnswer(question: string, employeeId: string | null) {
+async function createChatAnswer(question: string, employeeId: string | null, stream = false, categoryId: string | null = null) {
   const settings = await getChatSettings();
 
   if (!settings.is_enabled) {
@@ -1025,7 +1438,7 @@ async function createChatAnswer(question: string, employeeId: string | null) {
       status: "rate_limited",
       answer: `오늘 질문 가능 횟수 ${usage.dailyLimit}회를 모두 사용했습니다. 다음 사용 가능 시각은 ${new Date(
         usage.resetsAt,
-      ).toLocaleString("ko-KR", { hour12: false })} 입니다.`,
+      ).toLocaleString("ko-KR", { timeZone: "Asia/Seoul", hour12: false })} 입니다.`,
       sources: [],
       model: settings.model,
       usage,
@@ -1056,46 +1469,118 @@ async function createChatAnswer(question: string, employeeId: string | null) {
       sources: [],
       model: settings.model,
       usage,
+      diagnostics: {
+        failureStage: "retrieval",
+        retrieval: {
+          candidateCount: 0,
+          rerankedCount: 0,
+          selectedCount: 0,
+          queryHasEmbedding: false,
+          thresholdApplied: Deno.env.get("OPENAI_API_KEY") ? EMBEDDING_RERANK_THRESHOLD : KEYWORD_RERANK_THRESHOLD,
+          topScore: 0,
+          topRetrievalScore: 0,
+        },
+        generation: {
+          usedModel: settings.model || DEFAULT_CHAT_MODEL,
+          fallbackUsed: false,
+        },
+      },
     };
   }
 
-  const { data: chunks, error } = await supabase
-    .from("document_chunks")
-    .select("id, source_id, content, embedding, metadata")
-    .in("source_id", indexedSourceIds);
-  if (error) throw error;
-
-  let scoredChunks = (chunks || []).map((chunk) => ({
-    ...chunk,
-    score: 0,
-  }));
+  const diagnostics = {
+    failureStage: null,
+    retrieval: {
+      candidateCount: 0,
+      rerankedCount: 0,
+      selectedCount: 0,
+      queryHasEmbedding: false,
+      thresholdApplied: 0,
+      topScore: 0,
+      topRetrievalScore: 0,
+    },
+    generation: {
+      usedModel: settings.model || DEFAULT_CHAT_MODEL,
+      fallbackUsed: false,
+    },
+  };
 
   let queryEmbedding: number[] | null = null;
   if (Deno.env.get("OPENAI_API_KEY")) {
-    queryEmbedding = await generateEmbedding(question, settings);
+    try {
+      queryEmbedding = await generateEmbedding(question, settings);
+    } catch (embeddingError) {
+      throw makeChatPipelineError(String(embeddingError), "retrieval", diagnostics);
+    }
   }
+  diagnostics.retrieval.queryHasEmbedding = Boolean(queryEmbedding);
+
+  let scoredChunks: any[] = [];
 
   if (queryEmbedding) {
-    scoredChunks = scoredChunks
-      .map((chunk) => ({
-        ...chunk,
-        score: cosineSimilarity(queryEmbedding, Array.isArray(chunk.embedding) ? chunk.embedding : []),
-      }))
-      .sort((a, b) => b.score - a.score);
+    // pgvector RPC 호출을 통해 DB 레벨에서 고속 코사인 유사도 검색 및 카테고리 필터링 수행
+    const { data: matchedChunks, error: rpcError } = await supabase.rpc("match_chunks", {
+      query_embedding: queryEmbedding,
+      match_threshold: -0.05,
+      match_count: INITIAL_RETRIEVAL_LIMIT,
+      allowed_source_ids: indexedSourceIds,
+      filter_category_id: categoryId || null, // 카테고리 필터링 파라미터 연동
+    });
+    if (rpcError) throw rpcError;
+
+    scoredChunks = (matchedChunks || []).map((chunk: any) => ({
+      ...chunk,
+      embedding: null, // 메모리 절약을 위해 불필요한 embedding 필드 초기화
+    }));
   } else {
+    // 키워드 검색 fallback: embedding 컬럼을 조회 대상에서 배제해 Edge Function 메모리 아낌
+    let query = supabase
+      .from("document_chunks")
+      .select("id, source_id, content, parent_content, metadata") // parent_content 컬럼 추가
+      .in("source_id", indexedSourceIds);
+
+    if (categoryId) {
+      query = query.eq("metadata->>categoryId", categoryId); // 카테고리 필터링 적용
+    }
+
+    const { data: chunks, error: fetchError } = await query;
+    if (fetchError) throw fetchError;
+
     const tokens = question.toLowerCase().split(/\s+/).filter(Boolean);
-    scoredChunks = scoredChunks
+    scoredChunks = (chunks || [])
       .map((chunk) => {
         const haystack = String(chunk.content || "").toLowerCase();
         const matches = tokens.filter((token) => haystack.includes(token)).length;
         return { ...chunk, score: matches };
       })
+      .filter((chunk) => chunk.score >= 1)
       .sort((a, b) => b.score - a.score);
   }
 
-  const topChunks = scoredChunks
-    .filter((chunk) => (queryEmbedding ? chunk.score >= 0.2 : chunk.score >= 1))
-    .slice(0, 5);
+  const retrievalCandidates = scoredChunks.slice(0, INITIAL_RETRIEVAL_LIMIT);
+  diagnostics.retrieval.candidateCount = retrievalCandidates.length;
+
+  const rerankedChunks = rerankRetrievedChunks(question, retrievalCandidates, Boolean(queryEmbedding)).slice(0, RERANK_LIMIT);
+  diagnostics.retrieval.rerankedCount = rerankedChunks.length;
+
+  const thresholdApplied = queryEmbedding ? EMBEDDING_RERANK_THRESHOLD : KEYWORD_RERANK_THRESHOLD;
+  diagnostics.retrieval.thresholdApplied = thresholdApplied;
+
+  // RRF 정렬을 사용하므로, 어휘 매칭 점수가 극도로 무관하지 않은 후보들을 최종 맥락으로 선별
+  let topChunks = rerankedChunks
+    .filter((chunk) => chunk.lexicalScore >= 0.05 || chunk.retrievalScore >= -0.05)
+    .slice(0, FINAL_CONTEXT_LIMIT);
+
+  if (topChunks.length < Math.min(3, rerankedChunks.length)) {
+    topChunks = rerankedChunks.slice(0, Math.min(3, rerankedChunks.length, FINAL_CONTEXT_LIMIT));
+  }
+
+  diagnostics.retrieval.selectedCount = topChunks.length;
+  diagnostics.retrieval.topScore = Number(topChunks[0]?.rerankScore || rerankedChunks[0]?.rerankScore || 0);
+  diagnostics.retrieval.topRetrievalScore = Number(
+    topChunks[0]?.retrievalScore || rerankedChunks[0]?.retrievalScore || retrievalCandidates[0]?.score || 0,
+  );
+
   if (topChunks.length === 0) {
     return {
       status: "no_context",
@@ -1103,6 +1588,10 @@ async function createChatAnswer(question: string, employeeId: string | null) {
       sources: [],
       model: settings.model,
       usage,
+      diagnostics: {
+        ...diagnostics,
+        failureStage: "retrieval",
+      },
     };
   }
 
@@ -1110,13 +1599,16 @@ async function createChatAnswer(question: string, employeeId: string | null) {
   const context = topChunks
     .map(
       (chunk, index) =>
-        `문서 ${index + 1}\n제목: ${chunk.metadata?.title || "문서"}\n출처유형: ${
+        `참고문서: ${chunk.metadata?.title || "문서"}\n문서ID: ${chunk.source_id || `source-${index + 1}`}\n출처유형: ${
           chunk.metadata?.sourceType || "unknown"
-        }\n본문:\n${chunk.content}`,
+        }\n문서유형: ${chunk.metadata?.documentTypeLabel || "문서"}\n섹션제목: ${
+          chunk.metadata?.sectionTitle || chunk.metadata?.documentTitle || "본문"
+        }\n검색점수: ${(Number(chunk.rerankScore || 0)).toFixed(3)}\n본문:\n${chunk.parent_content || chunk.content}`, // Parent-Child 컨텍스트 주입
     )
     .join("\n\n");
 
   if (!Deno.env.get("OPENAI_API_KEY")) {
+    diagnostics.generation.fallbackUsed = true;
     return {
       status: "success",
       answer: `OpenAI API 키가 설정되지 않아 문서 근거만 정리합니다.\n\n질문: ${question}\n\n관련 근거:\n${sources
@@ -1125,50 +1617,133 @@ async function createChatAnswer(question: string, employeeId: string | null) {
       sources,
       model: "local-fallback",
       usage,
+      diagnostics,
     };
   }
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${Deno.env.get("OPENAI_API_KEY")}`,
-    },
-    body: JSON.stringify({
-      model: settings.model || DEFAULT_CHAT_MODEL,
-      input: [
-        {
-          role: "system",
-          content: [
-            {
-              type: "input_text",
-              text: settings.system_prompt || DEFAULT_SYSTEM_PROMPT,
-            },
-          ],
-        },
-        {
-          role: "user",
-          content: [
-            {
-              type: "input_text",
-              text: `질문: ${question}\n\n참고 문서:\n${context}`,
-            },
-          ],
-        },
-      ],
-    }),
-  });
+  if (stream) {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${Deno.env.get("OPENAI_API_KEY")}`,
+      },
+      body: JSON.stringify({
+        model: settings.model || DEFAULT_CHAT_MODEL,
+        messages: [
+          { role: "system", content: settings.system_prompt || DEFAULT_SYSTEM_PROMPT },
+          { role: "user", content: `질문: ${question}\n\n참고 문서:\n${context}` },
+        ],
+        stream: true,
+      }),
+    });
 
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(`Responses API failed: ${message}`);
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(`OpenAI Stream API failed: ${message}`);
+    }
+
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+    let fullAnswer = "";
+
+    return new ReadableStream({
+      async start(controller) {
+        const reader = response.body?.getReader();
+        if (!reader) {
+          controller.close();
+          return;
+        }
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split("\n").filter((line) => line.trim());
+            
+            for (const line of lines) {
+              if (line === "data: [DONE]") continue;
+              if (line.startsWith("data: ")) {
+                try {
+                  const data = JSON.parse(line.slice(6));
+                  const delta = data.choices[0]?.delta?.content || "";
+                  if (delta) {
+                    fullAnswer += delta;
+                    controller.enqueue(encoder.encode(delta));
+                  }
+                } catch (e) {
+                  console.error("Error parsing stream chunk:", e, line);
+                }
+              }
+            }
+          }
+
+          // 최종 메타데이터를 스트림 끝에 전송
+          // JSON 구분자로 \u241F (Unit Separator) 사용
+          const finalMetadata = {
+            status: "success",
+            sources,
+            model: settings.model,
+            usage: await getDailyChatUsage(settings, employeeId),
+            diagnostics,
+          };
+          controller.enqueue(encoder.encode("\u241F" + JSON.stringify(finalMetadata)));
+          
+          // 결과 로그 기록
+          await logChatQuery(
+            question,
+            fullAnswer,
+            "success",
+            settings.model,
+            sources,
+            employeeId,
+            undefined,
+            null,
+            diagnostics,
+          );
+        } catch (error) {
+          console.error("Stream reader error:", error);
+          controller.error(error);
+        } finally {
+          controller.close();
+        }
+      },
+    });
   }
 
-  const payload = await response.json();
-  const answer =
-    payload.output_text ||
-    payload.output?.map((item: any) => item.content?.map((part: any) => part.text || "").join("")).join("\n") ||
-    "응답을 생성하지 못했습니다.";
+  let answer = "";
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${Deno.env.get("OPENAI_API_KEY")}`,
+      },
+      body: JSON.stringify({
+        model: settings.model || DEFAULT_CHAT_MODEL,
+        messages: [
+          { role: "system", content: settings.system_prompt || DEFAULT_SYSTEM_PROMPT },
+          { role: "user", content: `질문: ${question}\n\n참고 문서:\n${context}` },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(`OpenAI API failed: ${message}`);
+    }
+
+    const payload = await response.json();
+    answer = payload.choices[0]?.message?.content || "";
+  } catch (generationError) {
+    throw makeChatPipelineError(String(generationError), "generation", diagnostics);
+  }
+
+  if (!answer.trim()) {
+    throw makeChatPipelineError("Empty generation output", "generation", diagnostics);
+  }
 
   return {
     status: "success",
@@ -1176,10 +1751,21 @@ async function createChatAnswer(question: string, employeeId: string | null) {
     sources,
     model: settings.model,
     usage,
+    diagnostics,
   };
 }
 
-async function logChatQuery(question: string, answer: string, status: string, model: string, sources: any[], employeeId: string | null, errorMessage?: string) {
+async function logChatQuery(
+  question: string,
+  answer: string,
+  status: string,
+  model: string,
+  sources: any[],
+  employeeId: string | null,
+  errorMessage?: string,
+  failureStage?: "retrieval" | "generation" | null,
+  diagnostics?: any,
+) {
   const { error } = await supabase.from("chat_query_logs").insert({
     id: makeId("chat"),
     employee_id: employeeId,
@@ -1189,9 +1775,35 @@ async function logChatQuery(question: string, answer: string, status: string, mo
     sources,
     status,
     error_message: errorMessage || null,
+    failure_stage: failureStage || null,
+    diagnostics: diagnostics || {},
   });
   if (error) {
     console.warn("Failed to log chat query:", error);
+    return;
+  }
+
+  try {
+    let historyQuery = supabase
+      .from("chat_query_logs")
+      .select("id")
+      .order("created_at", { ascending: false })
+      .range(MAX_CHAT_HISTORY_PER_USER, MAX_CHAT_HISTORY_PER_USER + 99);
+
+    historyQuery = employeeId
+      ? historyQuery.eq("employee_id", employeeId)
+      : historyQuery.is("employee_id", null);
+
+    const { data: staleLogs, error: staleLogsError } = await historyQuery;
+    if (staleLogsError) throw staleLogsError;
+
+    const staleIds = (staleLogs || []).map((entry) => entry.id).filter(Boolean);
+    if (staleIds.length) {
+      const { error: deleteError } = await supabase.from("chat_query_logs").delete().in("id", staleIds);
+      if (deleteError) throw deleteError;
+    }
+  } catch (pruneError) {
+    console.warn("Failed to prune chat history:", pruneError);
   }
 }
 
@@ -1638,7 +2250,7 @@ app.post("/make-server-a8898ff1/admin/create", async (c: any) => {
 app.put("/make-server-a8898ff1/admin/:id", async (c: any) => {
   try {
     const adminId = c.req.param("id");
-    const { name, employeeId, password } = await c.req.json();
+    const { name, employeeId, password, authUserId } = await c.req.json();
     const { data: existing, error: existingError } = await supabase
       .from("admins")
       .select("*")
@@ -1650,6 +2262,7 @@ app.put("/make-server-a8898ff1/admin/:id", async (c: any) => {
       name: String(name || existing.name).trim(),
       employee_id: String(employeeId || existing.employee_id).trim(),
       password: password ? String(password).trim() : existing.password,
+      auth_user_id: authUserId || existing.auth_user_id || null,
       updated_at: NOW(),
     };
     const { error } = await supabase.from("admins").update(updateRow).eq("id", adminId);
@@ -1830,7 +2443,7 @@ app.post("/make-server-a8898ff1/users/validate", async (c: any) => {
 
 app.post("/make-server-a8898ff1/users", async (c: any) => {
   try {
-    const { id, employeeId, name } = await c.req.json();
+    const { id, employeeId, name, authUserId } = await c.req.json();
     const normalizedEmployeeId = canonicalizeEmployeeId(employeeId);
     const displayName = String(name || "").trim();
     if (normalizedEmployeeId.length !== 8) {
@@ -1855,6 +2468,7 @@ app.post("/make-server-a8898ff1/users", async (c: any) => {
       id: existing?.id || String(id || normalizedEmployeeId),
       employee_id: normalizedEmployeeId,
       name: displayName,
+      auth_user_id: authUserId || existing?.auth_user_id || null,
       attendance: Boolean(existing?.attendance),
       attendance_dates: Array.isArray(existing?.attendance_dates) ? existing.attendance_dates : [],
       created_at: existing?.created_at || NOW(),
@@ -2249,7 +2863,15 @@ app.delete("/make-server-a8898ff1/personalized-recommendations/:ruleId", async (
 app.post("/make-server-a8898ff1/progress", async (c: any) => {
   try {
     const { employeeId, videoId, categoryId, progress, watchTime } = await c.req.json();
-    const normalizedEmployeeId = canonicalizeEmployeeId(employeeId);
+    
+    // 인증된 사번 우선 사용 (보안 강화)
+    const authEmployeeId = await getEmployeeIdFromAuth(c);
+    const normalizedEmployeeId = authEmployeeId || canonicalizeEmployeeId(employeeId);
+    
+    if (!normalizedEmployeeId) {
+      return c.json({ error: "인증된 사용자 정보가 필요하거나 사번이 누락되었습니다." }, 401);
+    }
+
     const { error } = await supabase
       .from("user_video_progress")
       .upsert(
@@ -2958,10 +3580,66 @@ app.get("/make-server-a8898ff1/admin/ai/query-logs", async (c: any) => {
       .order("created_at", { ascending: false })
       .limit(50);
     if (error) throw error;
-    return c.json({ logs: data || [] });
+    const logs = data || [];
+
+    const summaryResults = await Promise.all([
+      supabase.from("chat_query_logs").select("*", { count: "exact", head: true }),
+      supabase.from("chat_query_logs").select("*", { count: "exact", head: true }).eq("status", "success"),
+      supabase.from("chat_query_logs").select("*", { count: "exact", head: true }).eq("status", "no_context"),
+      supabase
+        .from("chat_query_logs")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "error")
+        .eq("failure_stage", "retrieval"),
+      supabase
+        .from("chat_query_logs")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "error")
+        .eq("failure_stage", "generation"),
+      supabase.from("chat_query_logs").select("*", { count: "exact", head: true }).eq("status", "error"),
+    ]);
+
+    for (const result of summaryResults) {
+      if (result.error) throw result.error;
+    }
+
+    const [totalResult, successResult, noContextResult, retrievalErrorResult, generationFailureResult, errorResult] =
+      summaryResults;
+
+    const summary = {
+      total: totalResult.count || 0,
+      success: successResult.count || 0,
+      retrievalFailures: (noContextResult.count || 0) + (retrievalErrorResult.count || 0),
+      generationFailures: generationFailureResult.count || 0,
+      noContext: noContextResult.count || 0,
+      errors: errorResult.count || 0,
+    };
+    return c.json({ logs, summary });
   } catch (error) {
     console.error("Query log error:", error);
     return c.json({ error: "쿼리 로그 조회 중 오류가 발생했습니다." }, 500);
+  }
+});
+
+app.get("/make-server-a8898ff1/chat/history", async (c: any) => {
+  try {
+    const employeeId = canonicalizeEmployeeId(String(c.req.query("employeeId") || ""));
+    if (!employeeId) {
+      return c.json({ history: [] });
+    }
+
+    const { data, error } = await supabase
+      .from("chat_query_logs")
+      .select("id, employee_id, question, answer, model, status, created_at")
+      .eq("employee_id", employeeId)
+      .order("created_at", { ascending: false })
+      .limit(MAX_CHAT_HISTORY_PER_USER);
+
+    if (error) throw error;
+    return c.json({ history: data || [] });
+  } catch (error) {
+    console.error("Chat history error:", error);
+    return c.json({ error: "채팅 기록 조회 중 오류가 발생했습니다." }, 500);
   }
 });
 
@@ -2971,14 +3649,48 @@ app.post("/make-server-a8898ff1/chat/query", async (c: any) => {
   try {
     const body = await c.req.json();
     question = String(body.question || "").trim();
-    employeeId = body.employeeId ? canonicalizeEmployeeId(body.employeeId) : null;
+    const stream = body.stream === true;
+    const categoryId = body.categoryId ? String(body.categoryId).trim() : null; // 카테고리 ID 파싱
+    
+    // 인증된 사번 우선 사용
+    const authEmployeeId = await getEmployeeIdFromAuth(c);
+    employeeId = authEmployeeId || (body.employeeId ? canonicalizeEmployeeId(body.employeeId) : null);
+    
     if (!question) return c.json({ error: "질문이 필요합니다." }, 400);
-    const result = await createChatAnswer(question, employeeId);
-    await logChatQuery(question, result.answer, result.status, result.model, result.sources, employeeId);
+
+    const result = await createChatAnswer(question, employeeId, stream, categoryId);
+
+    if (result instanceof ReadableStream) {
+      return new Response(result, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive",
+        },
+      });
+    }
+
+    await logChatQuery(
+      question,
+      result.answer,
+      result.status,
+      result.model,
+      result.sources,
+      employeeId,
+      undefined,
+      result.diagnostics?.failureStage || (result.status === "no_context" ? "retrieval" : null),
+      result.diagnostics,
+    );
     return c.json(result);
   } catch (error) {
     console.error("Chat query error:", error);
-    await logChatQuery(question, "", "error", "unknown", [], employeeId, String(error));
+    const failureStage =
+      error && typeof error === "object" && "failureStage" in error
+        ? (error.failureStage as "retrieval" | "generation")
+        : "generation";
+    const diagnostics =
+      error && typeof error === "object" && "diagnostics" in error ? (error.diagnostics as any) : undefined;
+    await logChatQuery(question, "", "error", "unknown", [], employeeId, String(error), failureStage, diagnostics);
     let usage = makeChatUsage(DEFAULT_DAILY_QUESTION_LIMIT, 0, getSeoulDayBounds().end);
     let model = DEFAULT_CHAT_MODEL;
     try {
@@ -2994,6 +3706,10 @@ app.post("/make-server-a8898ff1/chat/query", async (c: any) => {
       sources: [],
       model,
       usage,
+      diagnostics: {
+        ...(diagnostics || {}),
+        failureStage,
+      },
     });
   }
 });

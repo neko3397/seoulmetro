@@ -5,7 +5,6 @@ interface HomeFeedPageProps {
   currentUser: any;
   attendanceRate: number;
   onOpenEducationVideos: () => void;
-  onOpenDocuments: () => void;
   onOpenWikiDocs: () => void;
   onOpenNotices: () => void;
   onOpenChatbot: () => void;
@@ -17,7 +16,6 @@ export function HomeFeedPage({
   currentUser,
   attendanceRate,
   onOpenEducationVideos,
-  onOpenDocuments,
   onOpenWikiDocs,
   onOpenNotices,
   onOpenChatbot,
@@ -25,12 +23,14 @@ export function HomeFeedPage({
   onGoMyPage,
 }: HomeFeedPageProps) {
   return (
-    <div className="mx-auto max-w-6xl space-y-1">
-      <section className="pb-2 text-center">
-        <h2 className="text-4xl font-semibold tracking-tight text-slate-900 md:text-5xl">
-          환영합니다 {currentUser?.name || "사용자"}님 🎉
+    <div className="mx-auto max-w-6xl space-y-4 animate-fade-in-up">
+      <section className="pb-4 text-center">
+        <h2 className="text-4xl font-bold tracking-tight text-slate-950 md:text-5xl bg-gradient-to-r from-blue-700 via-indigo-600 to-cyan-500 bg-clip-text text-transparent">
+          환영합니다, {currentUser?.name || "사용자"}님 🎉
         </h2>
-        <p className="mt-3 text-lg text-slate-600 md:text-xl">이번달 출석률은 {attendanceRate}%입니다!</p>
+        <p className="mt-3 text-lg font-medium text-slate-600 md:text-xl">
+          이번 달 출석률은 <span className="text-blue-600 font-semibold">{attendanceRate}%</span>입니다!
+        </p>
       </section>
 
       <section className="overflow-hidden rounded-[32px] bg-[linear-gradient(135deg,#0f172a_0%,#1d4ed8_46%,#38bdf8_100%)] px-6 py-0 text-white shadow-2xl shadow-blue-200/40 md:px-10">
@@ -55,17 +55,6 @@ export function HomeFeedPage({
             <Play className="h-5 w-5 shrink-0 text-slate-900" />
             <span className="text-sm font-medium leading-tight text-slate-900" style={primaryNavButtonTextStyle}>
               교육영상
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={onOpenDocuments}
-            className={`${primaryNavButtonClassName} min-w-0 md:flex-1`}
-            style={primaryNavButtonTextStyle}
-          >
-            <FolderOpen className="h-5 w-5 shrink-0 text-slate-900" />
-            <span className="text-sm font-medium leading-tight text-slate-900" style={primaryNavButtonTextStyle}>
-              문서
             </span>
           </button>
           <button

@@ -87,7 +87,7 @@ export const markdownToHtml = (value?: string | null) => {
 
   const flushParagraph = () => {
     if (!paragraphBuffer.length) return;
-    html.push(`<p>${applyInlineMarkdown(paragraphBuffer.join("<br />"))}</p>`);
+    html.push(`<p>${paragraphBuffer.map((line) => applyInlineMarkdown(line)).join("<br />")}</p>`);
     paragraphBuffer = [];
   };
 

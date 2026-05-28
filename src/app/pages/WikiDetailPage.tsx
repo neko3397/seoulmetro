@@ -1,7 +1,8 @@
 import { GuideDetail } from "../../types/content";
 import { Badge } from "../../components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
-import { formatDateTime, markdownToHtml } from "../utils";
+import { MarkdownContent } from "../../components/MarkdownContent";
+import { formatDateTime } from "../utils";
 
 interface WikiDetailPageProps {
   guide: GuideDetail | null;
@@ -11,9 +12,9 @@ export function WikiDetailPage({ guide }: WikiDetailPageProps) {
   if (!guide) return null;
 
   return (
-    <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[320px_minmax(0,1fr)] lg:items-start">
-      <Card className="h-fit border-slate-200 bg-slate-50/90 shadow-sm lg:sticky lg:top-24">
-        <CardHeader className="border-b border-slate-200 pb-5">
+    <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[320px_minmax(0,1fr)] lg:items-start animate-fade-in-up">
+      <Card className="h-fit premium-card border-slate-100 lg:sticky lg:top-24">
+        <CardHeader className="border-b border-slate-100 pb-5">
           <CardTitle className="text-2xl font-bold tracking-tight text-slate-900">문서 목차</CardTitle>
           <CardDescription className="text-sm text-slate-600">{guide.title}</CardDescription>
         </CardHeader>
@@ -38,10 +39,9 @@ export function WikiDetailPage({ guide }: WikiDetailPageProps) {
         </CardContent>
       </Card>
 
-      <div className="space-y-6 rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+      <div className="space-y-6 rounded-[28px] border border-slate-100 bg-white p-6 shadow-xl shadow-slate-100/50 sm:p-8">
         <div className="space-y-3 border-b border-slate-200 pb-6">
-          <Badge variant="secondary">사내규정</Badge>
-          <h2 className="text-3xl font-bold text-slate-900">{guide.title}</h2>
+          <h2 className="text-4xl font-extrabold tracking-tight bg-gradient-to-r from-blue-700 via-indigo-600 to-cyan-500 bg-clip-text text-transparent">{guide.title}</h2>
           <p className="text-slate-600">{guide.description}</p>
           <p className="text-sm text-slate-500">{formatDateTime(guide.updatedAt)}</p>
         </div>
@@ -52,10 +52,7 @@ export function WikiDetailPage({ guide }: WikiDetailPageProps) {
               <CardTitle className="text-2xl text-slate-900">{section.title}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div
-                className="space-y-4 text-[15px] leading-8 text-slate-700 [&_a]:break-all [&_blockquote]:my-4 [&_code]:font-mono [&_h2]:mt-8 [&_h2]:text-2xl [&_h2]:font-semibold [&_h3]:mt-6 [&_h3]:text-xl [&_h3]:font-semibold [&_h4]:mt-5 [&_h4]:text-lg [&_h4]:font-semibold [&_li]:ml-5 [&_li]:list-disc [&_li]:pl-1 [&_p]:my-4 [&_pre]:my-5 [&_ul]:my-4"
-                dangerouslySetInnerHTML={{ __html: markdownToHtml(section.markdownContent) }}
-              />
+              <MarkdownContent value={section.markdownContent} />
             </CardContent>
           </Card>
         ))}

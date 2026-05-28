@@ -11,11 +11,10 @@ interface VideoListPageProps {
 
 export function VideoListPage({ currentTopic, currentVideos, onSelectVideo }: VideoListPageProps) {
   return (
-    <section className="space-y-6">
-      <div className="space-y-2">
-        <Badge variant="secondary">교육영상 목록</Badge>
-        <h2 className="text-3xl font-bold text-slate-900">{currentTopic?.title}</h2>
-        <p className="text-slate-600">{currentTopic?.description}</p>
+    <section className="space-y-6 animate-fade-in-up">
+      <div className="space-y-2 border-b border-slate-100 pb-4">
+        <h2 className="text-4xl font-extrabold tracking-tight bg-gradient-to-r from-blue-700 via-indigo-600 to-cyan-500 bg-clip-text text-transparent">{currentTopic?.title}</h2>
+        <p className="text-slate-500 font-medium">{currentTopic?.description}</p>
       </div>
       <div className="space-y-4">
         {currentVideos.map((video) => (

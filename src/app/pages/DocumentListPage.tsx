@@ -10,20 +10,19 @@ interface DocumentListPageProps {
 
 export function DocumentListPage({ category, posts, onSelectPost }: DocumentListPageProps) {
   return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <Badge variant="secondary">문서 목록</Badge>
-        <h2 className="text-3xl font-bold text-slate-900">{category?.title || "문서"}</h2>
-        <p className="text-slate-600">카테고리에 속한 문서를 확인하세요.</p>
+    <div className="space-y-6 animate-fade-in-up">
+      <div className="space-y-2 border-b border-slate-100 pb-4">
+        <h2 className="text-4xl font-extrabold tracking-tight bg-gradient-to-r from-blue-700 via-indigo-600 to-cyan-500 bg-clip-text text-transparent">{category?.title || "문서"}</h2>
+        <p className="text-slate-500 font-medium">선택하신 카테고리에 속해 있는 핵심 업무 문서 자료들입니다.</p>
       </div>
 
-      <div className="grid gap-4">
+      <div className="grid gap-6">
         {posts.map((post) => (
           <button
             key={post.id}
             type="button"
             onClick={() => onSelectPost(post)}
-            className="rounded-[24px] border bg-white p-6 text-left shadow-sm transition hover:border-blue-300 hover:shadow-md"
+            className="premium-card rounded-3xl p-6 text-left border border-slate-100/80 cursor-pointer"
           >
             <div className="flex flex-wrap items-center gap-3">
               <Badge variant="outline">문서</Badge>

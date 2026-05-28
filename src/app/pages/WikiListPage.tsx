@@ -12,23 +12,23 @@ interface WikiListPageProps {
 
 export function WikiListPage({ guides, wikiLoading, onRefresh, onSelectGuide }: WikiListPageProps) {
   return (
-    <div className="space-y-6">
-      <div className="flex items-end justify-between gap-4">
+    <div className="space-y-6 animate-fade-in-up">
+      <div className="flex items-end justify-between gap-4 border-b border-slate-100 pb-4">
         <div>
-          <Badge variant="secondary">사내규정</Badge>
-          <h2 className="mt-2 text-3xl font-bold text-slate-900">사내규정</h2>
+          <h2 className="text-4xl font-extrabold tracking-tight bg-gradient-to-r from-blue-700 via-indigo-600 to-cyan-500 bg-clip-text text-transparent">사내규정</h2>
+          <p className="mt-2 text-slate-500 font-medium">회사의 주요 규정과 안전 지침, 비상 대책 업무 매뉴얼을 확인하세요.</p>
         </div>
-        <Button variant="outline" onClick={onRefresh} disabled={wikiLoading}>
+        <Button variant="outline" onClick={onRefresh} disabled={wikiLoading} className="rounded-full shadow-sm hover:bg-slate-50">
           {wikiLoading ? "불러오는 중..." : "새로고침"}
         </Button>
       </div>
-      <div className="grid gap-4">
+      <div className="grid gap-6">
         {guides.map((guide) => (
           <button
             key={guide.id}
             type="button"
             onClick={() => onSelectGuide(guide)}
-            className="rounded-[24px] border bg-white p-6 text-left shadow-sm transition hover:border-blue-300 hover:shadow-md"
+            className="premium-card rounded-3xl p-6 text-left border border-slate-100/80 cursor-pointer"
           >
             <div className="flex flex-wrap items-center gap-3">
               <Badge variant="outline">v{guide.version}</Badge>

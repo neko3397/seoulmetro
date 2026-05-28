@@ -43,7 +43,7 @@ export function NoticeFeedPage({
       return (
         <Card
           key={item.id}
-          className="overflow-hidden border-0 bg-white/90 shadow-lg shadow-slate-200/50 transition hover:-translate-y-0.5 hover:shadow-xl"
+          className="overflow-hidden border-0 premium-card"
         >
           <button type="button" onClick={() => void onSelectFeedItem(item)} className="block w-full text-left">
             {item.itemType === "image" ? (
@@ -83,7 +83,7 @@ export function NoticeFeedPage({
     return (
       <Card
         key={item.id}
-        className="overflow-hidden border-0 bg-white/90 shadow-lg shadow-slate-200/50 transition hover:-translate-y-0.5 hover:shadow-xl"
+        className="overflow-hidden border-0 premium-card"
       >
         <button type="button" onClick={() => void onSelectFeedItem(item)} className="block w-full text-left">
           <div className="grid gap-0 md:grid-cols-[1.1fr_1fr]">
@@ -114,11 +114,10 @@ export function NoticeFeedPage({
   };
 
   return (
-    <section className="mx-auto max-w-3xl space-y-4 pb-8">
-      <div className="space-y-2">
-        <Badge variant="secondary">업무공지</Badge>
-        <h2 className="text-3xl font-bold text-slate-900">최신 게시물</h2>
-        <p className="text-slate-600">업무 공지와 최신 게시물을 한곳에서 확인하세요.</p>
+    <section className="mx-auto max-w-3xl space-y-6 pb-8 animate-fade-in-up">
+      <div className="space-y-2 border-b border-slate-100 pb-4">
+        <h2 className="text-4xl font-extrabold tracking-tight bg-gradient-to-r from-blue-700 to-indigo-600 bg-clip-text text-transparent">업무공지</h2>
+        <p className="text-slate-500 font-medium">최신 업무 공지와 중요 안내 사항을 한곳에서 신속하게 확인하세요.</p>
       </div>
 
       <div className="flex items-center justify-between gap-4">
