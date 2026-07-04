@@ -1,11 +1,8 @@
 import { VideoDescription } from "../../components/VideoDescription";
 import { VideoItem } from "../../components/VideoItem";
 import { VideoPlayer } from "../../components/VideoPlayer";
-import { Badge } from "../../components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
-import { formatDurationLabel } from "../../lib/video";
 import { Video } from "../../types/video";
-import { formatDateTime } from "../utils";
 
 interface VideoDetailPageProps {
   selectedVideo: Video | null;
@@ -24,25 +21,11 @@ export function VideoDetailPage({
 
   return (
     <div className="mx-auto max-w-6xl space-y-8 animate-fade-in-up">
-      <div className="space-y-2 border-b border-slate-100 pb-4">
-        <h2 className="text-4xl font-extrabold tracking-tight bg-gradient-to-r from-blue-700 via-indigo-600 to-cyan-500 bg-clip-text text-transparent">{selectedVideo.title}</h2>
-        <p className="text-sm text-slate-500 font-medium">
-          {formatDateTime(selectedVideo.updatedAt || selectedVideo.createdAt)} ·{" "}
-          {formatDurationLabel(selectedVideo.duration)}
-        </p>
-      </div>
+
 
       <div className="grid gap-8 lg:grid-cols-[1.8fr_1fr]">
         <div className="space-y-6">
           <VideoPlayer video={selectedVideo} categoryId={selectedVideo.categoryId || selectedTopicId} />
-          <Card className="premium-card border-slate-100">
-            <CardHeader>
-              <CardTitle>영상 설명</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="whitespace-pre-wrap leading-relaxed text-slate-700">{selectedVideo.description}</p>
-            </CardContent>
-          </Card>
         </div>
         <div className="space-y-6">
           <VideoDescription video={selectedVideo} />

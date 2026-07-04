@@ -788,12 +788,12 @@ export default function App() {
   const personalizedVideos = recommendationRule?.videos || [];
 
   if (currentView === "adminLogin") {
-    return <AdminLogin onLogin={handleAdminLogin} onBack={handleBack} />;
+    return <AdminLogin onLogin={handleAdminLogin} />;
   }
 
   if (currentView === "adminDashboard") {
     if (!adminUser) {
-      return <AdminLogin onLogin={handleAdminLogin} onBack={handleBack} />;
+      return <AdminLogin onLogin={handleAdminLogin} />;
     }
     return (
       <Suspense fallback={<AppLoadingScreen />}>
@@ -803,7 +803,7 @@ export default function App() {
   }
 
   if (currentView === "userLogin") {
-    return <UserLogin onLogin={handleUserLogin} onBack={handleBack} />;
+    return <UserLogin onLogin={handleUserLogin} />;
   }
 
   return (

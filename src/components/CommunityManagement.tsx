@@ -435,7 +435,7 @@ export function CommunityManagement({ admin, onUpdated }: CommunityManagementPro
                 onChange={(e) => setPostForm((prev) => ({ ...prev, title: e.target.value }))}
               />
             </div>
-            <div>
+            {/* <div>
               <Label htmlFor="post-summary">요약</Label>
               <Textarea
                 id="post-summary"
@@ -443,7 +443,7 @@ export function CommunityManagement({ admin, onUpdated }: CommunityManagementPro
                 value={postForm.summary}
                 onChange={(e) => setPostForm((prev) => ({ ...prev, summary: e.target.value }))}
               />
-            </div>
+            </div> */}
             <div>
               <Label htmlFor="post-content">본문</Label>
               <Textarea

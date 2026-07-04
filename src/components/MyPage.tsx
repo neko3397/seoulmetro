@@ -192,10 +192,6 @@ const MyPage: React.FC<MyPageProps> = ({ videosByCategory, onBack }) => {
                                 <h1 className="text-3xl font-bold mt-4 bg-gradient-to-r from-indigo-600 via-purple-600 to-fuchsia-600 bg-clip-text text-transparent">
                                     {user.name}님의 마이페이지
                                 </h1>
-
-                                <p className="text-slate-500 max-w-2xl mx-auto">
-                                    학습 진행 상황과 출석 정보를 확인하세요.
-                                </p>
                             </div>
                         )}
                     </div>

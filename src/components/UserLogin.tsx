@@ -19,7 +19,7 @@ interface LoggedInUser {
 
 interface UserLoginProps {
   onLogin: (user: LoggedInUser) => void;
-  onBack: () => void;
+  onBack?: () => void;
 }
 
 const validateEmployeeAuthorization = async (employeeId: string, name: string): Promise<{ success: boolean; exists: boolean }> => {
@@ -321,15 +321,17 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4 relative">
       <div className="w-full max-w-md space-y-6 relative">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onBack}
-          className="absolute left-4 top-4 flex items-center gap-2"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          돌아가기
-        </Button>
+        {onBack && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onBack}
+            className="absolute left-4 top-4 flex items-center gap-2"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            돌아가기
+          </Button>
+        )}
         {/* 헤더 */}
         <div className="text-center space-y-4">
           <div className="flex justify-center">

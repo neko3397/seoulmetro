@@ -19,7 +19,6 @@ export function EducationVideosPage({
     <section className="space-y-6 animate-fade-in-up">
       <div className="space-y-2 border-b border-slate-100 pb-4">
         <h2 className="text-4xl font-extrabold tracking-tight bg-gradient-to-r from-blue-700 via-indigo-600 to-cyan-500 bg-clip-text text-transparent">교육영상</h2>
-        <p className="text-slate-500 font-medium">주제별 다양한 핵심 직무 교육 영상을 탐색하고 학습해 보세요.</p>
       </div>
       <div className="grid gap-6 md:grid-cols-2">
         {categories.map((category) => (

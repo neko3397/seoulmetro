@@ -19,7 +19,6 @@ export function DocumentCategoriesPage({
     <section className="space-y-6 animate-fade-in-up">
       <div className="space-y-2 border-b border-slate-100 pb-4">
         <h2 className="text-4xl font-extrabold tracking-tight bg-gradient-to-r from-blue-700 via-indigo-600 to-cyan-500 bg-clip-text text-transparent">업무문서</h2>
-        <p className="text-slate-500 font-medium">필요한 사내 문서를 카테고리별로 확인하고 학습할 수 있습니다.</p>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">

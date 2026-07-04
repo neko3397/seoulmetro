@@ -250,9 +250,9 @@ export function CommunityPostDetailPage({ post }: CommunityPostDetailPageProps) 
           <div className="space-y-4">
             <div className="space-y-3">
               <h2 className="text-3xl leading-tight font-extrabold tracking-tight text-slate-950 md:text-4xl bg-gradient-to-r from-blue-800 via-indigo-700 to-cyan-600 bg-clip-text text-transparent">{post.title}</h2>
-              {post.summary ? (
+              {/* {post.summary ? (
                 <p className="max-w-3xl text-lg leading-8 font-medium text-slate-600">{post.summary}</p>
-              ) : null}
+              ) : null} */}
             </div>
             <div className="overflow-x-auto pt-1">
               <div className="flex min-w-max items-center gap-3 rounded-full bg-white/85 px-3.5 py-2.5 text-sm text-slate-600 shadow-[0_14px_36px_-26px_rgba(15,23,42,0.35)] backdrop-blur">

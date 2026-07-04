@@ -55,6 +55,15 @@ export const formatDateTime = (value?: string | null) => {
   }).format(new Date(value));
 };
 
+export const formatDate = (value?: string | null) => {
+  if (!value) return "등록 정보 없음";
+  return new Intl.DateTimeFormat("ko-KR", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  }).format(new Date(value));
+};
+
 const escapeHtml = (value: string) =>
   String(value)
     .replace(/&/g, "&amp;")

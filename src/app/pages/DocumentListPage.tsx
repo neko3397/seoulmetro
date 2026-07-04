@@ -13,7 +13,6 @@ export function DocumentListPage({ category, posts, onSelectPost }: DocumentList
     <div className="space-y-6 animate-fade-in-up">
       <div className="space-y-2 border-b border-slate-100 pb-4">
         <h2 className="text-4xl font-extrabold tracking-tight bg-gradient-to-r from-blue-700 via-indigo-600 to-cyan-500 bg-clip-text text-transparent">{category?.title || "문서"}</h2>
-        <p className="text-slate-500 font-medium">선택하신 카테고리에 속해 있는 핵심 업무 문서 자료들입니다.</p>
       </div>
 
       <div className="grid gap-6">
@@ -29,7 +28,7 @@ export function DocumentListPage({ category, posts, onSelectPost }: DocumentList
               <span className="text-sm text-slate-500">{formatDateTime(post.updatedAt)}</span>
             </div>
             <h3 className="mt-3 text-2xl font-semibold text-slate-900">{post.title}</h3>
-            <p className="mt-3 line-clamp-3 text-slate-600">{post.summary || post.content}</p>
+            <p className="mt-3 line-clamp-3 text-slate-600">{post.content}</p>
             <p className="mt-4 text-sm font-medium text-blue-700">문서 읽기</p>
           </button>
         ))}

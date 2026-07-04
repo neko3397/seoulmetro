@@ -211,7 +211,7 @@ export function UserCommunityComposer({ currentUser, onSubmitted, onClose }: Use
             placeholder="게시물 제목"
           />
         </div>
-        <div>
+        {/* <div>
           <Label htmlFor="user-post-summary">요약</Label>
           <Textarea
             id="user-post-summary"
@@ -220,7 +220,7 @@ export function UserCommunityComposer({ currentUser, onSubmitted, onClose }: Use
             onChange={(e) => setForm((prev) => ({ ...prev, summary: e.target.value }))}
             placeholder="게시물 요약"
           />
-        </div>
+        </div> */}
         <div>
           <Label htmlFor="user-post-content">본문</Label>
           <Textarea

@@ -1,10 +1,10 @@
-import { ArrowLeft, CalendarDays, FileImage, FileText, UserRound, Video as VideoIcon } from "lucide-react";
+import { ArrowLeft, FileImage, FileText, Video as VideoIcon } from "lucide-react";
 import { UserCommunityComposer } from "../../components/UserCommunityComposer";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { FeedItem } from "../../types/content";
-import { formatDateTime } from "../utils";
+import { formatDate, formatDateTime } from "../utils";
 
 interface NoticeFeedPageProps {
   currentUser: any;
@@ -39,7 +39,6 @@ export function NoticeFeedPage({
         <FileText className="h-4 w-4" />
       );
 
-    const authorName = item.authorName || (item.metadata?.authorName as string) || (item.itemType === "video" ? "교육담당자" : "관리자");
 
     return (
       <Card
@@ -83,34 +82,31 @@ export function NoticeFeedPage({
             </div>
 
             {/* Text content area */}
-            <div className="flex-1 min-w-0 space-y-2">
-              {/* Meta details row: Badge, Date, Name */}
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 font-medium">
-                <Badge className={`px-2 py-0.5 rounded-md border-0 text-[10px] font-bold ${
-                  item.itemType === "video"
-                    ? "bg-indigo-50 text-indigo-700 hover:bg-indigo-50"
-                    : item.itemType === "image"
-                      ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-50"
-                      : "bg-blue-50 text-blue-700 hover:bg-blue-50"
-                }`}>
-                  {item.itemType === "video" ? "교육영상" : item.itemType === "image" ? "이미지 공지" : "문서 공지"}
-                </Badge>
-
-                <span className="flex items-center gap-1.5 bg-slate-50 px-2 py-0.5 rounded-full text-slate-600">
-                  <CalendarDays className="h-3.5 w-3.5 text-slate-400" />
-                  {formatDateTime(item.publishedAt)}
-                </span>
-
-                <span className="flex items-center gap-1.5 bg-slate-50 px-2 py-0.5 rounded-full text-slate-600">
-                  <UserRound className="h-3.5 w-3.5 text-slate-400" />
-                  {authorName}
-                </span>
-              </div>
-
+            <div className="flex-1 min-w-0 space-y-2.5">
               {/* Title */}
               <h3 className="text-lg md:text-xl font-bold tracking-tight text-slate-900 group-hover:text-blue-700 transition-colors line-clamp-2">
                 {item.title}
               </h3>
+
+              {/* Meta details row: Badge, Date, Name */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-slate-500 font-medium">
+                <Badge
+                  variant="outline"
+                  className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                    item.itemType === "video"
+                      ? "bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-50"
+                      : item.itemType === "image"
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+                        : "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-50"
+                  }`}
+                >
+                  {item.itemType === "video" ? "교육영상" : item.itemType === "image" ? "이미지 공지" : "문서 공지"}
+                </Badge>
+
+                <span className="flex items-center gap-1.5 bg-slate-50 px-2 py-0.5 rounded-full text-slate-600">
+                  {formatDate(item.publishedAt)}
+                </span>
+              </div>
             </div>
 
             {/* Right Arrow Action */}
@@ -127,7 +123,6 @@ export function NoticeFeedPage({
     <section className="mx-auto max-w-3xl space-y-6 pb-8 animate-fade-in-up">
       <div className="space-y-2 border-b border-slate-100 pb-4">
         <h2 className="text-4xl font-extrabold tracking-tight bg-gradient-to-r from-blue-700 to-indigo-600 bg-clip-text text-transparent">업무공지</h2>
-        <p className="text-slate-500 font-medium">최신 업무 공지와 중요 안내 사항을 한곳에서 신속하게 확인하세요.</p>
       </div>
 
       <div className="flex items-center justify-between gap-4">

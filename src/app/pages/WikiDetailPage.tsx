@@ -42,7 +42,6 @@ export function WikiDetailPage({ guide }: WikiDetailPageProps) {
       <div className="space-y-6 rounded-[28px] border border-slate-100 bg-white p-6 shadow-xl shadow-slate-100/50 sm:p-8">
         <div className="space-y-3 border-b border-slate-200 pb-6">
           <h2 className="text-4xl font-extrabold tracking-tight bg-gradient-to-r from-blue-700 via-indigo-600 to-cyan-500 bg-clip-text text-transparent">{guide.title}</h2>
-          <p className="text-slate-600">{guide.description}</p>
           <p className="text-sm text-slate-500">{formatDateTime(guide.updatedAt)}</p>
         </div>
 
