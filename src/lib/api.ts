@@ -1,6 +1,7 @@
-import { projectId, publicAnonKey } from "../utils/supabase/info";
+import { projectId, publicAnonKey, functionSlug } from "../utils/supabase/info";
 
-export const apiBase = `https://${projectId}.supabase.co/functions/v1/make-server-a8898ff1`;
+export const apiBase = `https://${projectId}.supabase.co/functions/v1/${functionSlug}`;
+
 
 export const authHeaders = {
   Authorization: `Bearer ${publicAnonKey}`,

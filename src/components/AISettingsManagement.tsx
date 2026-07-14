@@ -24,6 +24,7 @@ export function AISettingsManagement({ onUpdated }: AISettingsManagementProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [reindexing, setReindexing] = useState(false);
+  const [reindexProgress, setReindexProgress] = useState<string | null>(null);
   const [querying, setQuerying] = useState(false);
   const [logs, setLogs] = useState<any[]>([]);
   const [logSummary, setLogSummary] = useState({
@@ -151,14 +152,29 @@ export function AISettingsManagement({ onUpdated }: AISettingsManagementProps) {
   const handleReindex = async () => {
     try {
       setReindexing(true);
-      const response = await apiRequest("/admin/ai/reindex", {
-        method: "POST",
-      });
-      const data = await response.json();
-      if (!data.success) {
-        alert(data.error || "재색인에 실패했습니다.");
-        return;
+      setReindexProgress("재색인 준비 중...");
+      
+      let hasMore = true;
+      while (hasMore) {
+        const response = await apiRequest("/admin/ai/reindex", {
+          method: "POST",
+        });
+        const data = await response.json();
+        if (!data.success) {
+          alert(data.error || "재색인에 실패했습니다.");
+          setReindexProgress(null);
+          return;
+        }
+        hasMore = data.hasMore;
+        if (hasMore) {
+          const remaining = data.remainingCount || 0;
+          const processed = data.processedSource || "문서";
+          setReindexProgress(`진행 중: "${processed}" 완료 (남은 문서: ${remaining}개)...`);
+        } else {
+          setReindexProgress("재색인 완료!");
+        }
       }
+      
       await load();
       onUpdated();
     } catch (error) {
@@ -166,6 +182,7 @@ export function AISettingsManagement({ onUpdated }: AISettingsManagementProps) {
       alert("재색인 중 오류가 발생했습니다.");
     } finally {
       setReindexing(false);
+      setTimeout(() => setReindexProgress(null), 3000);
     }
   };
 
@@ -319,13 +336,18 @@ export function AISettingsManagement({ onUpdated }: AISettingsManagementProps) {
             />
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex items-center gap-3">
             <Button onClick={handleSave} disabled={saving}>
               설정 저장
             </Button>
             <Button variant="outline" onClick={handleReindex} disabled={reindexing}>
-              재색인 실행
+              {reindexing ? "재색인 중..." : "재색인 실행"}
             </Button>
+            {reindexProgress && (
+              <span className="text-sm font-medium text-blue-600 animate-pulse">
+                {reindexProgress}
+              </span>
+            )}
           </div>
         </CardContent>
       </Card>

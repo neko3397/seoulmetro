@@ -6,7 +6,7 @@ const supabaseKey = publicAnonKey;
 
 declare global {
   interface Window {
-    __SEOULMETRO_SUPABASE__?: ReturnType<typeof createClient>;
+    __LMS_SUPABASE__?: ReturnType<typeof createClient>;
   }
 }
 
@@ -15,4 +15,4 @@ const createSupabaseClient = () => createClient(supabaseUrl, supabaseKey);
 export const supabase =
   typeof window === "undefined"
     ? createSupabaseClient()
-    : (window.__SEOULMETRO_SUPABASE__ ??= createSupabaseClient());
+    : (window.__LMS_SUPABASE__ ??= createSupabaseClient());

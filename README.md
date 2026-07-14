@@ -1,11 +1,81 @@
+# 📚 원스톱 배포 가이드 (타 기관 활용용)
 
-  # 서울교통공사 동대문승무사업소 불안제로
+이 시스템은 기관의 규정집 학습, 필수 시청 동영상 관리 및 AI RAG 기반의 스마트 업무 규정 질의응답을 제공하는 학습관리시스템(LMS)입니다.
+코딩을 전혀 모르는 일반 담당자분들도 **설정 파일 1개 수정 → 스크립트 1개 실행**으로 본인의 기관에 맞춰 전체 설치, 설정, 데이터베이스 구축 및 웹앱 배포를 완료할 수 있도록 구성되어 있습니다.
 
-  This is a code bundle for 서울교통공사 동대문승무사업소 불안제로. The original project is available at https://www.figma.com/design/91be8fGCB4SJ9MPSJwBjVx/%EC%84%9C%EC%9A%B8%EA%B5%90%ED%86%B5%EA%B3%B5%EC%82%AC-%EB%8F%99%EB%8C%80%EB%AC%B8%EC%8A%B9%EB%AC%B4%EC%82%AC%EC%97%85%EC%86%8C-%EB%8F%99%EA%B7%B8%EB%9D%BC%EC%9D%B8.
+---
 
-  ## Running the code
+## 🚀 빠른 시작 (배포 단계)
 
-  Run `npm i` to install the dependencies.
+### 1단계: 프로젝트 복사 (다운로드)
+본 소스코드를 다운로드하거나 클론하여 작업 폴더로 진입합니다.
 
-  Run `npm run dev` to start the development server.
-  # seoulmetro
+```bash
+git clone <repository-url> lms-deployment
+cd lms-deployment
+```
+
+### 2단계: 설정 파일 수정 (`org.config.json`)
+폴더 루트에 위치한 `org.config.json` 파일을 편집기(메모장, VS Code 등)로 열어 아래 사항을 기관 정보에 맞게 작성합니다.
+*상세 예시는 `org.config.example.json`을 참고하세요.*
+
+```json
+{
+  "organization": {
+    "name": "기관 전체 공식 명칭 (예: 한국철도공사)",
+    "shortName": "앱 단축명 (예: 코레일LMS)",
+    "appTitle": "웹 브라우저 상단 탭 제목",
+    "description": "기관용 학습 관리 시스템 설명",
+    "loginMessage": "로그인 페이지 표시 안내 문구",
+    "footerText": "화면 하단 카피라이트 명칭"
+  },
+  "ai": {
+    "enabled": false,        // AI 기능을 사용하려면 true로 변경 (OpenAI 키가 필요합니다)
+    "openaiApiKey": ""       // OpenAI API Key
+  },
+  "youtube": {
+    "channelImport": false   // 내 유튜브 채널의 모든 영상을 자동 등록하려면 true로 변경
+  },
+  "branding": {
+    "themeColor": "#1f2937",  // 기관 메인 테마 색상 (Hex 코드)
+    "backgroundColor": "#ffffff"
+  }
+}
+```
+
+### 3단계: 배포 스크립트 실행
+터미널에서 아래 단 한 줄의 명령어를 실행합니다.
+
+```bash
+./scripts/setup.sh
+```
+
+**스크립트가 자동으로 수행하는 작업:**
+1. **필수 환경 감지:** Node.js, npm, Supabase CLI, Vercel CLI 자동 확인 및 미설치 시 설치 안내/자동 설치 진행
+2. **Supabase 가입 및 DB 생성:** 브라우저를 열어 Supabase 회원가입을 유도하고, 자동으로 신규 데이터베이스 프로젝트를 세팅
+3. **스키마 및 서버 엔진 배포:** DB 테이블 생성(마이그레이션) 및 고유 주소의 클라우드 서버 함수(Edge Function)를 배포
+4. **브랜딩 일괄 적용:** 설정한 기관명/색상에 맞추어 브라우저 탭, PWA 모바일 아이콘 색상, 앱 타이틀을 일괄 치환
+5. **Vercel 호스팅 배포:** 웹 서비스를 무료 웹 호스팅 서버(Vercel)에 업로드하고 직원이 접속할 수 있는 최종 URL을 발급
+
+---
+
+## 🔑 기본 관리자 계정 정보
+
+배포가 성공적으로 완료되면 아래 관리자 계정으로 즉시 로그인하여 관리자 페이지를 활용할 수 있습니다.
+*   **사번:** `ADMIN001`
+*   **임시 비밀번호:** `admin123!`
+
+> [!WARNING]
+> 최초 로그인 후 대시보드 내 "관리자 계정 관리" 메뉴에서 본인의 사번과 비밀번호로 변경하여 안전하게 관리하시기 바랍니다.
+
+---
+
+## ⚙️ 부가 기능 가이드
+
+### 1. YouTube 영상 자동 연동
+`org.config.json`의 `youtube.channelImport`를 `true`로 설정하고 구글 API 정보를 넣어두면, 구글 로그인을 거쳐 사용자 유튜브 채널 내 모든 동영상을 학습시스템에 자동으로 일괄 연동합니다.
+배포 후에도 관리자 페이지의 **동영상 관리** 메뉴를 통해 동영상을 추가/삭제할 수 있습니다.
+
+### 2. AI 챗봇 및 문서 벡터 검색 (RAG)
+`ai.enabled`를 `true`로 켜고 OpenAI API 키를 입력하면 AI 챗봇 메뉴가 활성화됩니다.
+관리자가 가이드 문서를 업로드하면, AI가 문서 내용을 자동으로 분석하여 직원들의 질문에 대답할 때 출처 문서와 함께 가장 정확한 규정 답변을 자동 생성합니다. (비활성화 시 앱 내에서 챗봇 메뉴가 완벽히 감춰집니다.)

@@ -1,0 +1,61 @@
+{
+  "_comment": {
+    "organization": "조직 이름, 앱 타이틀, 로그인/관리자 화면 텍스트 등 UI에 표시되는 모든 조직별 문구를 설정합니다.",
+    "supabase": "Supabase 프로젝트 ID와 anon key를 입력합니다. 각 조직별로 별도의 Supabase 프로젝트를 생성해야 합니다.",
+    "vercel": "Vercel 배포 시 사용할 프로젝트 이름을 지정합니다.",
+    "ai": "AI 기능 활성화 여부와 OpenAI API 키, 모델, 일일 질문 제한 수를 설정합니다.",
+    "youtube": "YouTube 연동 기능 활성화 여부와 Google OAuth 클라이언트 정보를 설정합니다.",
+    "branding": "앱의 테마 색상과 배경 색상을 설정합니다.",
+    "roles": "조직의 직무 선택지와 경력 단계를 설정합니다. 조직 특성에 맞게 자유롭게 수정하세요."
+  },
+  "organization": {
+    "name": "한국철도공사 서울본부",
+    "shortName": "코레일 서울",
+    "appTitle": "코레일 서울 | 한국철도공사 서울본부 학습관리",
+    "description": "한국철도공사 서울본부 학습 관리 시스템",
+    "loginMessage": "한국철도공사 서울본부 학습관리에 로그인하세요",
+    "adminTitle": "한국철도공사 서울본부 관리자 페이지",
+    "headerTitle": "한국철도공사 서울본부 학습관리",
+    "footerText": "한국철도공사 서울본부"
+  },
+  "supabase": {
+    "projectId": "your-supabase-project-id",
+    "anonKey": "your-supabase-anon-key",
+    "region": "ap-northeast-2"
+  },
+  "vercel": {
+    "projectName": "korail-seoul-lms"
+  },
+  "ai": {
+    "enabled": true,
+    "openaiApiKey": "sk-your-openai-api-key",
+    "chatModel": "gpt-5.6-luna",
+    "embeddingModel": "text-embedding-3-small",
+    "dailyQuestionLimit": 30
+  },
+  "youtube": {
+    "enabled": true,
+    "channelImport": true,
+    "defaultCategoryName": "철도 교육 영상",
+    "googleClientId": "your-google-client-id.apps.googleusercontent.com",
+    "googleClientSecret": "your-google-client-secret"
+  },
+  "branding": {
+    "themeColor": "#003876",
+    "backgroundColor": "#f5f7fa"
+  },
+  "roles": {
+    "options": [
+      { "value": "기관사", "label": "기관사", "description": "KTX·일반열차 운전 업무" },
+      { "value": "차장", "label": "차장", "description": "열차 운행 보조 및 안전 관리" },
+      { "value": "역무원", "label": "역무원", "description": "역사 운영 및 고객 안내" },
+      { "value": "시설관리", "label": "시설관리", "description": "철도 시설 유지보수" }
+    ],
+    "careerStages": [
+      { "value": "신입", "label": "신입 (1년 미만)", "description": "기본 교육 과정 중심" },
+      { "value": "초급", "label": "초급 (1~3년)", "description": "실무 적응 과정" },
+      { "value": "중급", "label": "중급 (3~10년)", "description": "심화 전문 과정" },
+      { "value": "고급", "label": "고급 (10년 이상)", "description": "관리자·지도 과정" }
+    ]
+  }
+}

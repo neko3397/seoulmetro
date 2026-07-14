@@ -1,5 +1,6 @@
 import { ArrowLeft } from "lucide-react";
 import logo from "../../assets/logo.png";
+import { orgConfig } from '@/config/orgConfig';
 import { Button } from "../../components/ui/button";
 
 interface AppHeaderProps {
@@ -17,9 +18,9 @@ export function AppHeader({ canGoBack, onBack }: AppHeaderProps) {
               <ArrowLeft className="h-4 w-4" />
             </Button>
           ) : null}
-          <img src={logo} alt="동대문승무사업소 불안제로" className="h-10 w-10 object-contain" />
+          <img src={logo} alt={orgConfig.organization.headerTitle} className="h-10 w-10 object-contain" />
           <div>
-            <h1 className="text-lg font-bold">동대문승무사업소 불안제로</h1>
+            <h1 className="text-lg font-bold">{orgConfig.organization.headerTitle}</h1>
           </div>
         </div>
       </div>

@@ -1,5 +1,6 @@
 import { Bell, BookOpen, Bot, FolderOpen, Play, Sparkles, User } from "lucide-react";
 import { primaryNavButtonClassName, primaryNavButtonTextStyle } from "../constants";
+import { orgConfig } from "../../config/orgConfig";
 
 interface HomeFeedPageProps {
   currentUser: any;
@@ -68,17 +69,19 @@ export function HomeFeedPage({
               사내규정
             </span>
           </button>
-          <button
-            type="button"
-            onClick={onOpenChatbot}
-            className={`${primaryNavButtonClassName} min-w-0 md:flex-1`}
-            style={primaryNavButtonTextStyle}
-          >
-            <Bot className="h-5 w-5 shrink-0 text-slate-900" />
-            <span className="text-sm font-medium leading-tight text-slate-900" style={primaryNavButtonTextStyle}>
-              AI 챗봇
-            </span>
-          </button>
+          {orgConfig.ai.enabled && (
+            <button
+              type="button"
+              onClick={onOpenChatbot}
+              className={`${primaryNavButtonClassName} min-w-0 md:flex-1`}
+              style={primaryNavButtonTextStyle}
+            >
+              <Bot className="h-5 w-5 shrink-0 text-slate-900" />
+              <span className="text-sm font-medium leading-tight text-slate-900" style={primaryNavButtonTextStyle}>
+                AI 챗봇
+              </span>
+            </button>
+          )}
           <button
             type="button"
             onClick={onOpenPersonalizedEducation}

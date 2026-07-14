@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/
 import { Alert, AlertDescription } from "./ui/alert";
 import { User, ArrowLeft } from "lucide-react";
 import seoulMetroLogo from "../assets/logo.png";
+import { orgConfig } from '@/config/orgConfig';
 import { projectId, publicAnonKey } from "../utils/supabase/info";
 import { supabase } from "../utils/supabase/client";
 
@@ -335,12 +336,12 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
         {/* 헤더 */}
         <div className="text-center space-y-4">
           <div className="flex justify-center">
-            <img src={seoulMetroLogo} alt="서울교통공사 로고" className="w-24 h-24" />
+            <img src={seoulMetroLogo} alt={`${orgConfig.organization.name} 로고`} className="w-24 h-24" />
           </div>
           <div>
             <h1 className="mb-2">사용자 로그인</h1>
             <p className="text-muted-foreground">
-              동대문승무사업소 불안제로에 로그인하세요
+              {orgConfig.organization.loginMessage}
             </p>
           </div>
         </div>
@@ -407,8 +408,8 @@ export function UserLogin({ onLogin, onBack }: UserLoginProps) {
 
         {/* 안내 메시지 */}
         <div className="text-center text-sm text-muted-foreground">
-          <p>서울교통공사 동대문승무사업소</p>
-          <p>불안제로</p>
+          <p>{orgConfig.organization.footerText}</p>
+          <p>{orgConfig.organization.shortName}</p>
         </div>
       </div>
     </div>

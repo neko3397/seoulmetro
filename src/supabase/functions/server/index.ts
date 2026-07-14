@@ -76,7 +76,7 @@ const FINAL_CONTEXT_LIMIT = 6;
 const EMBEDDING_RERANK_THRESHOLD = 0.18;
 const KEYWORD_RERANK_THRESHOLD = 0.22;
 const DEFAULT_SYSTEM_PROMPT =
-  "당신은 제공된 문서 범위를 벗어난 추측은 하지 말고, 근거가 부족하면 모른다고 답하는 챗봇입니다. 답변에서 참고 문서를 언급할 때는 반드시 제공된 실제 문서 제목을 그대로 사용하고, '문서 1', '문서 2' 같은 일반 번호 라벨은 쓰지 마세요. 답변 마지막에는 참고한 문서를 실제 제목 기준으로 짧게 정리하세요.";
+  "당신은 제공된 문서 범위를 벗어난 추측은 하지 말고, 근거가 부족하면 모른다고 답하는 챗봇입니다. 답변에서 참고 문서를 언급할 때는 반드시 제공된 실제 문서 제목을 그대로 사용하고, '문서 1', '문서 2' 같은 일반 번호 라벨은 쓰지 마세요. 답변 마지막에는 참고한 문서를 실제 제목 기준으로 짧게 정리하세요. 만약 제공된 참고 문서의 본문에 이미지 마크다운 태그(예: `![alt](images/...)`)가 포함되어 있고 질문에 답변하는 데 유용하거나 양식을 보여주어야 한다면, 해당 이미지 마크다운 태그(예: `![지도표 표면](images/driving_regulation/jidopyo_front.png)`)를 답변 본문 안에 그대로(수정 없이) 포함시켜 주세요.";
 const DOCUMENT_SIGNED_URL_TTL = 60 * 60 * 24 * 7;
 const ALLOWED_DOCUMENT_TYPES = new Map([
   ["application/pdf", "pdf"],
@@ -414,7 +414,18 @@ function splitBlockIntoUnits(block: string, maxLength: number) {
       current = sentence;
     }
     if (current) grouped.push(current);
-    return grouped.flatMap((unit) => (unit.length > maxLength ? splitBlockIntoUnits(unit, Math.max(120, Math.floor(maxLength * 0.75))) : [unit]));
+    return grouped.flatMap((unit) => {
+      if (unit.length <= maxLength) return [unit];
+      const slices: string[] = [];
+      let start = 0;
+      while (start < unit.length) {
+        const end = Math.min(unit.length, start + maxLength);
+        slices.push(unit.slice(start, end).trim());
+        if (end >= unit.length) break;
+        start = end;
+      }
+      return slices.filter(Boolean);
+    });
   }
 
   const slices: string[] = [];
@@ -433,6 +444,9 @@ function buildSemanticChunks(text: string, chunkSize: number, overlap: number) {
   if (!normalized) return [];
 
   const safeChunk = Math.max(240, chunkSize || 800);
+  if (normalized.length <= safeChunk) {
+    return [normalized];
+  }
   const safeOverlap = Math.max(0, Math.min(safeChunk - 80, overlap || 120));
   const rawBlocks = normalized
     .split(/\n\s*\n/)
@@ -1293,7 +1307,7 @@ async function buildDocumentSources() {
   return sources;
 }
 
-async function generateEmbedding(input: string, settings: any) {
+async function generateEmbedding(input: string | string[], settings: any): Promise<any> {
   const apiKey = Deno.env.get("OPENAI_API_KEY");
   if (!apiKey) return null;
   const response = await fetch("https://api.openai.com/v1/embeddings", {
@@ -1312,20 +1326,287 @@ async function generateEmbedding(input: string, settings: any) {
     throw new Error(`Embedding request failed: ${message}`);
   }
   const payload = await response.json();
+  if (Array.isArray(input)) {
+    return payload.data?.map((item: any) => item.embedding) ?? [];
+  }
   return payload.data?.[0]?.embedding ?? null;
 }
 
+function parseEmbeddingValue(val: any): number[] | null {
+  if (!val) return null;
+  if (Array.isArray(val)) return val;
+  if (typeof val === "string") {
+    try {
+      return JSON.parse(val);
+    } catch {
+      const cleaned = val.trim();
+      if (cleaned.startsWith("[") && cleaned.endsWith("]")) {
+        return cleaned.slice(1, -1).split(",").map(Number);
+      }
+    }
+  }
+  return null;
+}
+
+const reindexLogs: string[] = [];
+
+async function saveReindexLogToDb(logs: string[]) {
+  try {
+    await supabase.from("chat_query_logs").upsert({
+      id: "reindex_debug_log",
+      employee_id: "system",
+      question: "reindex_debug",
+      answer: logs.join("\n"),
+      model: "debug",
+      status: "success",
+      created_at: new Date().toISOString()
+    });
+  } catch (e) {
+    console.error("Failed to save reindex log to DB:", e);
+  }
+}
+
+function logReindex(msg: string) {
+  const formatted = `[${new Date().toISOString()}] ${msg}`;
+  console.log(formatted);
+  reindexLogs.push(formatted);
+  if (reindexLogs.length > 500) {
+    reindexLogs.shift();
+  }
+}
+
+async function logMilestone(msg: string) {
+  logReindex(`MILESTONE: ${msg}`);
+  await saveReindexLogToDb(reindexLogs);
+}
+
+async function acquireReindexLock(): Promise<boolean> {
+  const lockId = "reindex_lock";
+  const now = new Date();
+  
+  // Try to insert lock row
+  const { error: insertError } = await supabase.from("chat_query_logs").insert({
+    id: lockId,
+    employee_id: "system",
+    question: "lock",
+    answer: "indexing in progress",
+    model: "lock",
+    status: "success",
+    created_at: now.toISOString()
+  });
+
+  if (!insertError) {
+    // Lock acquired successfully
+    return true;
+  }
+
+  // If insert failed, it might be due to primary key conflict (lock already exists)
+  if (insertError.code === "23505") { // Unique violation
+    // Fetch the existing lock to check if it's stale
+    const { data: lockRow, error: selectError } = await supabase
+      .from("chat_query_logs")
+      .select("created_at")
+      .eq("id", lockId)
+      .maybeSingle();
+
+    if (selectError || !lockRow) {
+      return false;
+    }
+
+    const lockTime = new Date(lockRow.created_at);
+    const ageInMilliseconds = now.getTime() - lockTime.getTime();
+    const staleLimit = 3 * 60 * 1000; // 3 minutes
+
+    if (ageInMilliseconds > staleLimit) {
+      logReindex(`Reindex lock is stale (${Math.round(ageInMilliseconds/1000)}s old). Breaking the lock...`);
+      // Delete the stale lock
+      await supabase.from("chat_query_logs").delete().eq("id", lockId);
+      // Try acquiring again
+      return acquireReindexLock();
+    }
+  }
+
+  return false;
+}
+
+async function releaseReindexLock() {
+  const lockId = "reindex_lock";
+  try {
+    await supabase.from("chat_query_logs").delete().eq("id", lockId);
+  } catch (err) {
+    console.error("Failed to release reindex lock:", err);
+  }
+}
+
 async function rebuildIndex() {
-  const settings = await getChatSettings();
-  const sources = await buildDocumentSources();
-  const now = NOW();
+  await logMilestone("rebuildIndex start");
 
-  await supabase.from("document_chunks").delete().neq("id", "");
-  await supabase.from("document_sources").delete().neq("id", "");
+  // Acquire advisory lock
+  const lockAcquired = await acquireReindexLock();
+  if (!lockAcquired) {
+    logReindex("Failed to acquire reindex lock. Another reindexing job is running.");
+    throw new Error("다른 재색인 작업이 이미 진행 중입니다. 이전 작업이 비정상 종료된 경우, 약 3분 후 자동으로 잠금이 해제됩니다.");
+  }
 
-  for (const source of sources) {
-    const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(source.content_text));
-    const contentHash = Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  try {
+    const settings = await getChatSettings();
+    logReindex(`Fetched settings: chunk_size=${settings.chunk_size}, chunk_overlap=${settings.chunk_overlap}, embedding_model=${settings.embedding_model}`);
+    const sources = await buildDocumentSources();
+    await logMilestone(`Fetched document sources: count=${sources.length}`);
+    const now = NOW();
+
+    // 1. Fetch existing document sources to determine what changed
+    let existingSources: any[] = [];
+    try {
+      logReindex("Fetching existing document sources from database...");
+      const { data, error } = await supabase
+        .from("document_sources")
+        .select("id, content_hash, metadata");
+      if (!error && data) {
+        existingSources = data;
+        logReindex(`Successfully fetched existing sources: count=${existingSources.length}`);
+      } else if (error) {
+        logReindex(`Error fetching existing sources: ${JSON.stringify(error)}`);
+      }
+    } catch (err) {
+      console.error("Failed to fetch existing sources for incremental indexing:", err);
+      logReindex(`Exception fetching existing sources: ${err.message || err}`);
+    }
+
+    // Fetch chunk counts per source to detect corrupted/empty sources
+    const chunkCountMap = new Map<string, number>();
+    try {
+      logReindex("Fetching chunk counts from database...");
+      const countsPromises = existingSources.map(async (src) => {
+        const { count, error } = await supabase
+          .from("document_chunks")
+          .select("*", { count: "exact", head: true })
+          .eq("source_id", src.id);
+        if (!error && count !== null) {
+          chunkCountMap.set(src.id, count);
+        } else if (error) {
+          logReindex(`Error fetching chunk count for source ${src.id}: ${JSON.stringify(error)}`);
+        }
+      });
+      await Promise.all(countsPromises);
+      logReindex(`Successfully fetched chunk counts. Unique sources in chunks: ${chunkCountMap.size}`);
+    } catch (err) {
+      console.error("Failed to fetch chunk counts:", err);
+      logReindex(`Exception fetching chunk counts: ${err.message || err}`);
+    }
+
+    const existingSourcesMap = new Map<string, any>();
+    for (const src of existingSources) {
+      existingSourcesMap.set(src.id, src);
+    }
+
+    // 2. Classify sources
+    const currentModel = settings.embedding_model || "text-embedding-3-small";
+    const currentChunkSize = Number(settings.chunk_size || 800);
+    const currentChunkOverlap = Number(settings.chunk_overlap || 120);
+
+    const sourcesToProcess: any[] = [];
+    const activeSourceIds = new Set<string>();
+
+    for (const source of sources) {
+      activeSourceIds.add(source.id);
+
+      // Calculate content hash
+      const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(source.content_text));
+      const contentHash = Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+
+      // Check if unmodified
+      const existing = existingSourcesMap.get(source.id);
+      const existingChunkCount = chunkCountMap.get(source.id) || 0;
+      const isUnmodified =
+        existing &&
+        existingChunkCount > 0 &&
+        existing.content_hash === contentHash &&
+        existing.metadata?.chunk_size === currentChunkSize &&
+        existing.metadata?.chunk_overlap === currentChunkOverlap &&
+        existing.metadata?.embedding_model === currentModel;
+
+      if (isUnmodified) {
+        continue;
+      }
+
+      sourcesToProcess.push({
+        source,
+        contentHash,
+      });
+    }
+
+    // Determine deleted sources
+    const deletedSourceIds: string[] = [];
+    for (const src of existingSources) {
+      if (!activeSourceIds.has(src.id)) {
+        deletedSourceIds.push(src.id);
+      }
+    }
+
+    await logMilestone(`Sources classified: sourcesToProcess=${sourcesToProcess.length}, deleted=${deletedSourceIds.length}`);
+
+    // Delete removed sources first (fast)
+    if (deletedSourceIds.length > 0) {
+      for (const deletedId of deletedSourceIds) {
+        logReindex(`Deleting removed source: id=${deletedId}`);
+        await supabase.from("document_sources").delete().eq("id", deletedId);
+      }
+      await logMilestone(`Deleted removed sources from database`);
+    }
+
+    // If nothing to process, we are finished!
+    if (sourcesToProcess.length === 0) {
+      await logMilestone("reindex complete (nothing to process)");
+      return {
+        indexedSourceCount: sources.length,
+        processedSource: null,
+        hasMore: false,
+        remainingCount: 0,
+        totalChunks: 0
+      };
+    }
+
+    // Process ONLY the first source in the list to prevent WORKER_RESOURCE_LIMIT
+    const itemToProcess = sourcesToProcess[0];
+    const { source, contentHash } = itemToProcess;
+    logReindex(`Incremental Processing: processing source: id=${source.id}, title=${source.title}`);
+
+    // Fetch embedding cache to avoid OpenAI calls (only query if chunks exist in DB for this source)
+    const embeddingCache = new Map<string, number[]>();
+    const existingChunksCountForSource = chunkCountMap.get(source.id) || 0;
+    if (existingChunksCountForSource > 0) {
+      try {
+        logReindex(`Fetching existing chunks for source ${source.id} from database to build embedding cache...`);
+        const { data: existingChunks, error: chunkError } = await supabase
+          .from("document_chunks")
+          .select("content, embedding, metadata")
+          .eq("source_id", source.id)
+          .not("embedding", "is", null);
+        if (!chunkError && existingChunks) {
+          let cachedCount = 0;
+          for (const row of existingChunks) {
+            if (row.content && row.embedding) {
+              const oldModel = row.metadata?.embedding_model || "text-embedding-3-small";
+              if (oldModel === currentModel) {
+                const parsed = parseEmbeddingValue(row.embedding);
+                if (parsed) {
+                  embeddingCache.set(row.content, parsed);
+                  cachedCount++;
+                }
+              }
+            }
+          }
+          logReindex(`Built embedding cache: cachedCount=${cachedCount}`);
+        }
+      } catch (err) {
+        console.error("Failed to build embedding cache:", err);
+      }
+    } else {
+      logReindex(`Skipping embedding cache build because document_chunks has no chunks for source ${source.id}.`);
+    }
+
+    // Upsert the single source row
     const sourceRow = {
       ...source,
       is_indexed: true,
@@ -1333,33 +1614,115 @@ async function rebuildIndex() {
       last_indexed_at: now,
       created_at: now,
       updated_at: now,
+      metadata: {
+        ...source.metadata,
+        chunk_size: currentChunkSize,
+        chunk_overlap: currentChunkOverlap,
+        embedding_model: currentModel,
+      },
     };
-    const { error: sourceError } = await supabase.from("document_sources").insert(sourceRow);
-    if (sourceError) throw sourceError;
-
-    const chunks = buildSectionAwareChunks(source, settings);
-    for (let index = 0; index < chunks.length; index += 1) {
-      const chunk = chunks[index];
-      const embedding = Deno.env.get("OPENAI_API_KEY")
-        ? await generateEmbedding(chunk.content, settings)
-        : null;
-      const chunkRow = {
-        id: `${source.id}_chunk_${index}`,
-        source_id: source.id,
-        chunk_index: index,
-        content: chunk.content,
-        parent_content: chunk.parentContent, // Parent-Child 지원
-        embedding,
-        metadata: chunk.metadata,
-        created_at: now,
-        updated_at: now,
-      };
-      const { error: chunkError } = await supabase.from("document_chunks").insert(chunkRow);
-      if (chunkError) throw chunkError;
+    const { error: sourceError } = await supabase.from("document_sources").upsert(sourceRow);
+    if (sourceError) {
+      logReindex(`Error upserting source ${source.id}: ${JSON.stringify(sourceError)}`);
+      throw sourceError;
     }
-  }
 
-  return { indexedSourceCount: sources.length };
+    // Delete existing chunks for this source first
+    logReindex(`Deleting existing chunks for source: id=${source.id}`);
+    const { error: delChunksError } = await supabase.from("document_chunks").delete().eq("source_id", source.id);
+    if (delChunksError) {
+      logReindex(`Error deleting chunks for ${source.id}: ${JSON.stringify(delChunksError)}`);
+    }
+
+    // Chunk it
+    logReindex(`Chunking source: id=${source.id}...`);
+    const chunks = buildSectionAwareChunks(source, settings);
+    logReindex(`Chunking complete: id=${source.id}, generated chunks=${chunks.length}`);
+
+    let cacheHitCount = 0;
+    const batchSize = 50;
+    logReindex(`Processing chunks sequentially in batches of ${batchSize} to prevent Memory Limit Exceeded...`);
+
+    for (let i = 0; i < chunks.length; i += batchSize) {
+      const chunkBatch = chunks.slice(i, i + batchSize);
+      const chunkRowsToInsert: any[] = [];
+      const chunksToEmbedInBatch: any[] = [];
+
+      for (let j = 0; j < chunkBatch.length; j += 1) {
+        const globalIndex = i + j;
+        const chunk = chunkBatch[j];
+        const content = chunk.content;
+        const cachedEmbedding = embeddingCache.get(content) || null;
+        if (cachedEmbedding) {
+          cacheHitCount++;
+        }
+
+        const row = {
+          id: `${source.id}_chunk_${globalIndex}`,
+          source_id: source.id,
+          chunk_index: globalIndex,
+          content: content,
+          parent_content: chunk.parentContent,
+          embedding: cachedEmbedding,
+          metadata: {
+            ...chunk.metadata,
+            embedding_model: currentModel,
+          },
+          created_at: now,
+          updated_at: now,
+        };
+
+        chunkRowsToInsert.push(row);
+        if (!row.embedding) {
+          chunksToEmbedInBatch.push(row);
+        }
+      }
+
+      if (chunksToEmbedInBatch.length > 0) {
+        const apiKey = Deno.env.get("OPENAI_API_KEY");
+        if (apiKey) {
+          const batchContents = chunksToEmbedInBatch.map(c => String(c.content || "").trim()).map(c => c || "본문");
+          logReindex(`Requesting embeddings for batch [index ${i} to ${i + chunkBatch.length}]: count=${chunksToEmbedInBatch.length}...`);
+          try {
+            const embeddings = await generateEmbedding(batchContents, settings);
+            if (embeddings && Array.isArray(embeddings)) {
+              logReindex(`Received embeddings for batch: count=${embeddings.length}`);
+              for (let k = 0; k < chunksToEmbedInBatch.length; k += 1) {
+                chunksToEmbedInBatch[k].embedding = embeddings[k] ?? null;
+              }
+            }
+          } catch (openaiErr) {
+            logReindex(`Error in embedding batch: ${openaiErr.message || openaiErr}`);
+            throw openaiErr;
+          }
+        } else {
+          logReindex("Skipping OpenAI embedding generation because OPENAI_API_KEY is not configured.");
+        }
+      }
+
+      // Insert this batch immediately into the database
+      if (chunkRowsToInsert.length > 0) {
+        logReindex(`Inserting chunks batch [index ${i} to ${i + chunkBatch.length}]: count=${chunkRowsToInsert.length}...`);
+        const { error: chunkError } = await supabase.from("document_chunks").insert(chunkRowsToInsert);
+        if (chunkError) {
+          logReindex(`Error inserting chunks batch: ${JSON.stringify(chunkError)}`);
+          throw chunkError;
+        }
+      }
+    }
+
+    await logMilestone(`reindex step complete for ${source.title}`);
+    return { 
+      indexedSourceCount: sources.length, 
+      processedSource: source.title,
+      hasMore: sourcesToProcess.length > 1,
+      remainingCount: sourcesToProcess.length - 1,
+      totalChunks: chunks.length 
+    };
+  } finally {
+    // Release advisory lock
+    await releaseReindexLock();
+  }
 }
 
 async function getIndexStatus() {
@@ -3626,13 +3989,39 @@ app.put("/make-server-a8898ff1/admin/ai/settings", async (c: any) => {
   }
 });
 
+app.get("/make-server-a8898ff1/admin/ai/debug-counts", async (c: any) => {
+  try {
+    const guides = await supabase.from("guides").select("id, title, is_published");
+    const sections = await supabase.from("guide_sections").select("id, guide_id, title");
+    const posts = await supabase.from("community_posts").select("id, title, is_published, approval_status, post_type");
+    
+    // Fetch persisted log from DB using service role key
+    const { data: dbLogData } = await supabase
+      .from("chat_query_logs")
+      .select("answer")
+      .eq("id", "reindex_debug_log")
+      .maybeSingle();
+
+    return c.json({
+      success: true,
+      guides: { count: guides.data?.length || 0, data: guides.data || [] },
+      sections: { count: sections.data?.length || 0, data: sections.data || [] },
+      posts: { count: posts.data?.length || 0, data: posts.data || [] },
+      persistedLogs: dbLogData?.answer || "no persisted logs yet",
+      reindexLogs: reindexLogs
+    });
+  } catch (error: any) {
+    return c.json({ error: error.message || error }, 500);
+  }
+});
+
 app.post("/make-server-a8898ff1/admin/ai/reindex", async (c: any) => {
   try {
     const result = await rebuildIndex();
     return c.json({ success: true, ...result, status: await getIndexStatus() });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Reindex error:", error);
-    return c.json({ error: "문서 재색인 중 오류가 발생했습니다." }, 500);
+    return c.json({ error: `문서 재색인 중 오류가 발생했습니다: ${error.message || error}` }, 500);
   }
 });
 

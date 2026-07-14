@@ -1,5 +1,6 @@
 import { BookOpen, Sparkles, User, Users } from "lucide-react";
 import { contentCacheKey } from "../lib/contentSync";
+import { orgConfig } from '@/config/orgConfig';
 
 export const NAV_STATE_STORAGE_KEY = "app-navigation-state-v2";
 export const PERSONALIZED_PROFILE_STORAGE_KEY = "personalized-profile-input";
@@ -15,32 +16,15 @@ export const primaryNavButtonTextStyle = {
   WebkitTextFillColor: "#0f172a",
 } as const;
 
-export const PERSONALIZED_ROLE_OPTIONS = [
-  {
-    value: "기관사" as const,
-    label: "기관사",
-    description: "운전 업무 중심 추천",
-    icon: User,
-  },
-  {
-    value: "차장" as const,
-    label: "차장",
-    description: "현장 운영 중심 추천",
-    icon: Users,
-  },
-];
+const iconMap: Record<string, any> = { User, Users, Sparkles, BookOpen };
 
-export const PERSONALIZED_CAREER_OPTIONS = [
-  {
-    value: "신입" as const,
-    label: "신입",
-    description: "입문 학습부터 빠르게",
-    icon: Sparkles,
-  },
-  {
-    value: "경력" as const,
-    label: "경력",
-    description: "심화·보수 과정 중심",
-    icon: BookOpen,
-  },
-];
+export const PERSONALIZED_ROLE_OPTIONS = orgConfig.roles.options.map((opt, i) => ({
+  ...opt,
+  icon: i === 0 ? User : Users,
+}));
+
+export const PERSONALIZED_CAREER_OPTIONS = orgConfig.roles.careerStages.map((opt, i) => ({
+  ...opt,
+  icon: i === 0 ? Sparkles : BookOpen,
+}));
+

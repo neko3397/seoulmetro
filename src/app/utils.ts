@@ -76,7 +76,20 @@ const applyInlineMarkdown = (value: string) => {
   let html = escapeHtml(value);
 
   html = html.replace(/`([^`]+)`/g, '<code class="rounded bg-slate-100 px-1.5 py-0.5 text-[0.9em] text-slate-800">$1</code>');
-  html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer" class="font-medium text-blue-700 underline underline-offset-4">$1</a>');
+  // Render Markdown Images with URL-encoded paths for Supabase Storage compatibility
+  html = html.replace(
+    /!\[([^\]]*)\]\(images\/([^\)]+(?:\([^\)]+\)[^\)]*)*\.(?:png|jpg|jpeg|gif|bmp))\)/g,
+    (_, alt, path) => {
+      const encodedPath = path
+        .split("/")
+        .map((segment: string) => encodeURIComponent(segment))
+        .join("/");
+      return `<img src="https://nkowcjmjqaszwtrvgedt.supabase.co/storage/v1/object/public/make-a8898ff1-images/images/${encodedPath}" alt="${alt}" class="my-4 max-w-full h-auto rounded-xl shadow-md border border-slate-200/80" />`;
+    }
+  );
+  // Fallback for regular markdown images
+  html = html.replace(/!\[([^\]]*)\]\(([^\s)]+)\)/g, '<img src="$2" alt="$1" class="my-4 max-w-full h-auto rounded-xl shadow-md border border-slate-200/80" />');
+  html = html.replace(/\[([^\]]+)\]\(([^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer" class="font-medium text-blue-700 underline underline-offset-4">$1</a>');
   html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   html = html.replace(/\*([^*]+)\*/g, "<em>$1</em>");
 

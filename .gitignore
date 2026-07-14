@@ -4,3 +4,13 @@ node_modules
 .env.*
 supabase/.temp/
 .venv/
+
+# Images
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.webp
+*.ico
+*.bmp

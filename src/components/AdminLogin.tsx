@@ -7,6 +7,7 @@ import { AlertCircle, ArrowLeft } from 'lucide-react';
 import { projectId, publicAnonKey } from '../utils/supabase/info';
 import { supabase } from '../utils/supabase/client';
 import logo from '../assets/logo.png'; // 로고 이미지 경로
+import { orgConfig } from '@/config/orgConfig';
 
 interface AdminLoginProps {
   onLogin: (admin: any) => void;
@@ -169,13 +170,13 @@ export function AdminLogin({ onLogin, onBack }: AdminLoginProps) {
           <div className="flex justify-center mb-4">
             <img
               src={logo}
-              alt="서울교통공사"
+              alt={orgConfig.organization.name}
               className="h-12 w-auto"
             />
           </div>
           <CardTitle className="text-2xl text-center">관리자 로그인</CardTitle>
           <CardDescription className="text-center">
-            서울교통공사 불안제로 관리자 페이지
+            {orgConfig.organization.adminTitle}
           </CardDescription>
         </CardHeader>
         <CardContent>

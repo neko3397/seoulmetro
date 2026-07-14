@@ -19,6 +19,7 @@ import { OperationsOverview } from "./OperationsOverview";
 import { PersonalizedRecommendationManagement } from "./PersonalizedRecommendationManagement";
 import { useIsMobile } from "./ui/use-mobile";
 import seoulMetroLogo from "../assets/logo.png";
+import { orgConfig } from '@/config/orgConfig';
 
 interface AdminDashboardProps {
   admin: any;
@@ -221,7 +222,7 @@ export function AdminDashboard({ admin, onLogout }: AdminDashboardProps) {
             >
               {isSidebarOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
             </Button>
-            <img src={seoulMetroLogo} alt="서울교통공사" className="h-10 w-10 rounded-xl" />
+            <img src={seoulMetroLogo} alt={orgConfig.organization.name} className="h-10 w-10 rounded-xl" />
             <div className="min-w-0">
               <h1 className="truncate text-lg font-semibold text-slate-900">
                 관리자 운영 센터 &gt; {menuItems.find((item) => item.id === activeMenu)?.label}

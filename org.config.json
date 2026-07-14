@@ -1,0 +1,48 @@
+{
+  "organization": {
+    "name": "서울교통공사 동대문승무사업소",
+    "shortName": "불안제로",
+    "appTitle": "불안제로 | 서울교통공사 동대문 학습관리",
+    "description": "서울교통공사 동대문승무사업소 학습 관리 시스템",
+    "loginMessage": "동대문승무사업소 불안제로에 로그인하세요",
+    "adminTitle": "서울교통공사 불안제로 관리자 페이지",
+    "headerTitle": "동대문승무사업소 불안제로",
+    "footerText": "서울교통공사 동대문승무사업소"
+  },
+  "supabase": {
+    "projectId": "",
+    "anonKey": "",
+    "region": "ap-northeast-2"
+  },
+  "vercel": {
+    "projectName": ""
+  },
+  "ai": {
+    "enabled": false,
+    "openaiApiKey": "",
+    "chatModel": "gpt-5.6-luna",
+    "embeddingModel": "text-embedding-3-small",
+    "dailyQuestionLimit": 20
+  },
+  "youtube": {
+    "enabled": false,
+    "channelImport": false,
+    "defaultCategoryName": "교육 영상",
+    "googleClientId": "",
+    "googleClientSecret": ""
+  },
+  "branding": {
+    "themeColor": "#1f2937",
+    "backgroundColor": "#ffffff"
+  },
+  "roles": {
+    "options": [
+      { "value": "기관사", "label": "기관사", "description": "운전 업무 중심 추천" },
+      { "value": "차장", "label": "차장", "description": "현장 운영 중심 추천" }
+    ],
+    "careerStages": [
+      { "value": "신입", "label": "신입", "description": "입문 학습부터 빠르게" },
+      { "value": "경력", "label": "경력", "description": "심화·보수 과정 중심" }
+    ]
+  }
+}

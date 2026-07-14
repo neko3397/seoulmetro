@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { orgConfig } from "./config/orgConfig";
 import { videos as mockVideos } from "./data/mockData";
 import { Video } from "./types/video";
 import {
@@ -198,6 +199,9 @@ export default function App() {
     } = {},
     options: NavigateOptions = {},
   ) => {
+    if (view === "chatbot" && !orgConfig.ai.enabled) {
+      return;
+    }
     const currentHistoryState = window.history.state as NavigationState | null;
     const nextComparableState = {
       view,
@@ -250,6 +254,10 @@ export default function App() {
 
     const handlePopState = (event: PopStateEvent) => {
       const state = event.state as NavigationState | null;
+      if (state && state.view === "chatbot" && !orgConfig.ai.enabled) {
+        applyNavigationState({ ...state, view: "homeFeed" });
+        return;
+      }
       if (!state) {
         const fallbackState = {
           view: currentUserRef.current ? "homeFeed" : "userLogin",
