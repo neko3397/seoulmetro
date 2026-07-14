@@ -546,6 +546,11 @@ async function runLocalReindex() {
   const existingSourcesMap = new Map(existingSources.map(s => [s.id, s]));
 
   // 2. Classify sources
+  const force = process.argv.includes('--force') || process.argv.includes('-f');
+  if (force) {
+    logInfo("Force flag (-f/--force) detected. Reindexing all documents.");
+  }
+
   const currentModel = settings.embedding_model || "text-embedding-3-small";
   const currentChunkSize = Number(settings.chunk_size || 800);
   const currentChunkOverlap = Number(settings.chunk_overlap || 120);
@@ -561,6 +566,7 @@ async function runLocalReindex() {
     const existing = existingSourcesMap.get(source.id);
     const existingChunkCount = chunkCountMap.get(source.id) || 0;
     const isUnmodified =
+      !force &&
       existing &&
       existingChunkCount > 0 &&
       existing.content_hash === contentHash &&
