@@ -18,7 +18,7 @@
     "projectName": ""
   },
   "ai": {
-    "enabled": false,
+    "enabled": true,
     "openaiApiKey": "",
     "chatModel": "gpt-5.6-luna",
     "embeddingModel": "text-embedding-3-small",
