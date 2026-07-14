@@ -66,6 +66,7 @@
     "build": "vite build",
     "pdf:convert": "node scripts/convert-pdf-to-md.mjs",
     "pdf:convert-hybrid": ".venv/bin/python docs/pdf.py",
-    "hwp:convert": ".venv/bin/python docs/hwp.py"
+    "hwp:convert": ".venv/bin/python docs/hwp.py",
+    "ai:reindex": "node scripts/reindex_local.mjs"
   }
 }
