@@ -296,7 +296,7 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
   }, [result, history]);
 
   return (
-    <div className="mx-auto flex h-[calc(100vh-104px)] min-h-[620px] max-w-[1440px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm animate-fade-in-up relative">
+    <div className="flex h-[calc(100vh-73px)] min-h-[620px] w-full overflow-hidden bg-white animate-fade-in-up relative">
       {/* 모바일 화면에서 사이드바 오픈 시 배경을 어둡게 가리는 딤(Dim) 레이어 */}
       {isSidebarOpen && (
         <div 

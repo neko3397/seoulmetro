@@ -829,11 +829,11 @@ export default function App() {
     <div className="flex min-h-screen flex-col bg-[linear-gradient(180deg,#eff6ff_0%,#f8fafc_22%,#ffffff_100%)] text-slate-900">
       <AppHeader canGoBack={currentView !== "homeFeed"} onBack={handleBack} />
 
-      <main className="app-shell-container relative z-0 container mx-auto flex-1 w-full px-4 py-8">
+      <main className={`app-shell-container relative z-0 flex-1 w-full ${currentView === "chatbot" ? "p-0" : "container mx-auto px-4 py-8"}`}>
         {loading ? (
           <AppLoadingScreen />
         ) : (
-          <div className="space-y-6">
+          <div className={currentView === "chatbot" ? "h-full" : "space-y-6"}>
             {currentView === "homeFeed" ? (
                 <HomeFeedPage
                   currentUser={currentUser}
@@ -985,7 +985,7 @@ export default function App() {
         )}
       </main>
 
-      {currentUser ? (
+      {currentUser && currentView !== "chatbot" ? (
         <AppFooter
           onGoHome={() => navigateTo("homeFeed", { video: null, guide: null, post: null })}
           onGoMyPage={() => navigateTo("myPage", { video: null, guide: null, post: null })}
