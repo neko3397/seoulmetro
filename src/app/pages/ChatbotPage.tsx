@@ -409,8 +409,8 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
 
       {/* 2. 중앙 대화 영역 */}
       <div className="flex-1 flex flex-col h-full bg-gradient-to-br from-white via-slate-50/20 to-indigo-50/5 relative min-w-0">
-        {/* 상단 툴바 - 항상 노출되는 사이드바 토글 버튼 (Aesthetics 업그레이드) */}
-        <div className="h-14 border-b border-slate-100 px-4 sm:px-6 flex items-center justify-between bg-white shrink-0 shadow-3xs">
+        {/* 상단 툴바 - 항상 노출되는 사이드바 토글 버튼 */}
+        <div className="h-14 border-b border-slate-100 px-4 sm:px-6 flex items-center justify-between bg-white shrink-0 shadow-3xs animate-fade-in">
           <div className="flex items-center gap-3 min-w-0">
             {/* 상단 툴바 왼쪽에 항상 배치되는 메뉴 버튼 */}
             <Button 
@@ -459,19 +459,19 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
                 </p>
               </div>
 
-              {/* 추천 질문 Grid (모바일은 1열, 데스크톱은 2열) */}
+              {/* 추천 질문 Grid (모바일은 1열, 데스크톱은 2열) - 높이 고정을 제거하여 텍스트 겹침 차단 */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 w-full pt-2 sm:pt-4 max-w-xl px-4 sm:px-0">
                 {SUGGESTIONS.map((s, idx) => (
                   <div 
                     key={idx}
                     onClick={() => handleSubmit(s.query)}
-                    className="p-4 rounded-2xl border border-slate-200/60 bg-white/80 backdrop-blur-xs shadow-3xs hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 text-left cursor-pointer transition-all duration-200 group flex flex-col justify-between h-[85px] sm:h-[105px]"
+                    className="p-4 rounded-2xl border border-slate-200/60 bg-white/80 backdrop-blur-xs shadow-3xs hover:shadow-md hover:scale-[1.02] hover:border-indigo-200 text-left cursor-pointer transition-all duration-200 group flex flex-col justify-between min-h-[100px] sm:min-h-[115px] h-auto"
                   >
-                    <div>
+                    <div className="mb-2">
                       <p className="text-xs font-bold text-slate-700 group-hover:text-indigo-600 transition-colors truncate">{s.title}</p>
                       <p className="text-[10px] text-slate-500 mt-1 line-clamp-2 leading-relaxed">{s.desc}</p>
                     </div>
-                    <div className="flex items-center justify-end text-slate-350 group-hover:text-indigo-600 transition-colors">
+                    <div className="flex items-center justify-end text-slate-350 group-hover:text-indigo-600 transition-colors mt-auto pt-1">
                       <CornerDownLeft className="h-3.5 w-3.5" />
                     </div>
                   </div>
@@ -479,62 +479,129 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
               </div>
             </div>
           ) : (
-            /* 대화가 존재할 때 */
-            <div className="max-w-3xl w-full mx-auto space-y-8 flex flex-col flex-1 z-10">
-              {/* 1. 사용자 질문 - 인디고 그라데이션 버블 */}
-              <div className="flex flex-col items-end space-y-1">
-                <div className="bg-gradient-to-br from-indigo-500 via-indigo-600 to-blue-600 text-white rounded-3xl rounded-tr-none px-5 py-3 shadow-md max-w-[85%] sm:max-w-[80%] text-sm leading-relaxed whitespace-pre-wrap font-medium border-b border-indigo-700/30">
-                  {activeQuestion}
-                </div>
-              </div>
+            /* 대화가 존재할 때 (대화 이력 전체 세로 스크롤 구조 복원) */
+            <div className="max-w-3xl w-full mx-auto space-y-6 flex flex-col flex-1 z-10 px-2 sm:px-4">
+              
+              {/* 1. 과거 대화 타임라인 */}
+              {sortedHistory.map((entry) => (
+                <div key={entry.id} className="space-y-6">
+                  {/* 사용자 질문 */}
+                  <div className="flex flex-col items-end space-y-1">
+                    <div className="bg-gradient-to-br from-indigo-500 via-indigo-600 to-blue-600 text-white rounded-3xl rounded-tr-none px-4 sm:px-5 py-2.5 sm:py-3 shadow-xs max-w-[85%] sm:max-w-[80%] text-sm leading-relaxed whitespace-pre-wrap font-medium border-b border-indigo-700/30">
+                      {entry.question}
+                    </div>
+                  </div>
 
-              {/* 2. AI 답변 - 얇은 글래스모피즘 보더와 반짝임 효과 */}
-              <div className="flex items-start gap-3 sm:gap-4">
-                <div className="flex h-9 w-9 shrink-0 select-none items-center justify-center rounded-xl bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-100 text-indigo-600 shadow-xs mt-0.5">
-                  <Bot className="h-4.5 w-4.5" />
-                </div>
-                <div className="flex flex-col space-y-2 flex-1 min-w-0">
-                  <div className="text-slate-800 text-sm leading-relaxed space-y-3 bg-white/70 backdrop-blur-xs border border-slate-100/80 rounded-3xl rounded-tl-none p-5 shadow-xs">
-                    {submitting && !result?.answer ? (
-                      <div className="flex items-center gap-2.5 py-2 text-slate-450">
-                        <Loader2 className="h-4.5 w-4.5 animate-spin text-indigo-600" />
-                        <span className="text-xs font-semibold">답변을 정교하게 분석하는 중...</span>
-                      </div>
-                    ) : (
-                      result?.status === "success" || !result ? (
-                        <>
-                          <MarkdownContent value={result?.answer} compact />
-                          
-                          {/* 출처 목록 배지 표시 */}
-                          {result?.sources && result.sources.length > 0 && (
-                            <div className="flex flex-wrap gap-1.5 mt-4 pt-3.5 border-t border-slate-100">
-                              <span className="text-[10px] text-slate-400 mr-1.5 self-center font-bold">참고 출처:</span>
-                              {result.sources.map((src, i) => (
-                                <Badge 
-                                  key={i} 
-                                  variant="outline" 
-                                  className="text-[10px] bg-slate-50 hover:bg-indigo-600 hover:text-white border-slate-200 hover:border-indigo-600 cursor-pointer transition-all duration-200 px-2 py-0.5 rounded-lg font-medium shadow-3xs"
-                                  onClick={() => _onSelectSource(src)}
-                                >
-                                  {src.title}
-                                </Badge>
-                              ))}
+                  {/* AI 답변 */}
+                  <div className="flex items-start gap-3 sm:gap-4">
+                    <div className="flex h-9 w-9 shrink-0 select-none items-center justify-center rounded-xl bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-100 text-indigo-600 shadow-sm mt-0.5">
+                      <Bot className="h-4.5 w-4.5" />
+                    </div>
+                    <div className="flex flex-col space-y-2 flex-1 min-w-0">
+                      <div className="text-slate-800 text-sm leading-relaxed space-y-3 bg-white/70 backdrop-blur-xs border border-slate-100/85 rounded-3xl rounded-tl-none p-4 sm:p-5 shadow-xs">
+                        {entry.status === "success" ? (
+                          <>
+                            <MarkdownContent value={entry.answer} compact />
+                            
+                            {/* 출처 목록 배지 표시 */}
+                            {(entry as any).sources && (entry as any).sources.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 mt-4 pt-3.5 border-t border-slate-100">
+                                <span className="text-[10px] text-slate-400 mr-1.5 self-center font-bold">참고 출처:</span>
+                                {(entry as any).sources.map((src: ChatSource, i: number) => (
+                                  <Badge 
+                                    key={i} 
+                                    variant="outline" 
+                                    className="text-[10px] bg-slate-50 hover:bg-indigo-600 hover:text-white border-slate-200 hover:border-indigo-600 cursor-pointer transition-all duration-200 px-2 py-0.5 rounded-lg font-medium shadow-3xs"
+                                    onClick={() => _onSelectSource(src)}
+                                  >
+                                    {src.title}
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <div className="flex items-start gap-2.5 text-amber-600 bg-amber-50/50 border border-amber-100 rounded-2xl p-4">
+                            <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+                            <div className="flex flex-col gap-0.5">
+                              <span className="font-bold text-xs">{STATUS_COPY[entry.status]?.title || entry.status}</span>
+                              <span className="text-[11px] text-slate-500">{STATUS_COPY[entry.status]?.description}</span>
                             </div>
-                          )}
-                        </>
-                      ) : (
-                        <div className="flex items-start gap-2.5 text-amber-600 bg-amber-50/50 border border-amber-100 rounded-2xl p-4">
-                          <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
-                          <div className="flex flex-col gap-0.5">
-                            <span className="font-bold text-xs">{statusCopy?.title}</span>
-                            <span className="text-[11px] text-slate-500">{statusCopy?.description}</span>
                           </div>
-                        </div>
-                      )
-                    )}
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px] text-slate-455 ml-1">
+                        <span>모델: {entry.model}</span>
+                        <span>•</span>
+                        <span>{new Date(entry.createdAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
+              ))}
+
+              {/* 2. 현재 활성 스트리밍 대화 */}
+              {showActiveStream && (
+                <div className="space-y-6 animate-fade-in-up">
+                  {/* 사용자 임시 말풍선 */}
+                  <div className="flex flex-col items-end space-y-1">
+                    <div className="bg-gradient-to-br from-indigo-500 via-indigo-600 to-blue-600 text-white rounded-3xl rounded-tr-none px-4 sm:px-5 py-2.5 sm:py-3 shadow-xs max-w-[85%] sm:max-w-[80%] text-sm leading-relaxed whitespace-pre-wrap font-medium border-b border-indigo-700/30">
+                      {activeQuestion}
+                    </div>
+                  </div>
+
+                  {/* AI 실시간 스트리밍 답변 */}
+                  <div className="flex items-start gap-3 sm:gap-4">
+                    <div className="flex h-9 w-9 shrink-0 select-none items-center justify-center rounded-xl bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-100 text-indigo-600 shadow-sm mt-0.5">
+                      <Bot className="h-4.5 w-4.5" />
+                    </div>
+                    <div className="flex flex-col space-y-2 flex-1 min-w-0">
+                      <div className="text-slate-800 text-sm leading-relaxed space-y-3 bg-white/70 backdrop-blur-xs border border-slate-100/85 rounded-3xl rounded-tl-none p-4 sm:p-5 shadow-xs min-w-[100px]">
+                        {submitting && !result?.answer ? (
+                          <div className="flex items-center gap-2.5 py-2 text-slate-450">
+                            <Loader2 className="h-4.5 w-4.5 animate-spin text-indigo-600" />
+                            <span className="text-xs font-semibold">답변을 정교하게 분석하는 중...</span>
+                          </div>
+                        ) : (
+                          result?.status === "success" || !result ? (
+                            <>
+                              <MarkdownContent value={result?.answer} compact />
+                              {/* 스트리밍 중에도 출처 표기 */}
+                              {result?.sources && result.sources.length > 0 && (
+                                <div className="flex flex-wrap gap-1.5 mt-4 pt-3.5 border-t border-slate-100">
+                                  <span className="text-[10px] text-slate-400 mr-1.5 self-center font-bold">참고 출처:</span>
+                                  {result.sources.map((src, i) => (
+                                    <Badge 
+                                      key={i} 
+                                      variant="outline" 
+                                      className="text-[10px] bg-slate-50 hover:bg-indigo-600 hover:text-white border-slate-200 hover:border-indigo-600 cursor-pointer transition-all duration-200 px-2 py-0.5 rounded-lg font-medium shadow-3xs"
+                                      onClick={() => _onSelectSource(src)}
+                                    >
+                                      {src.title}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <div className="flex items-start gap-2.5 text-amber-600 bg-amber-50/50 border border-amber-100 rounded-2xl p-4">
+                              <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+                              <div className="flex flex-col gap-0.5">
+                                <span className="font-bold text-xs">{statusCopy?.title}</span>
+                                <span className="text-[11px] text-slate-500">{statusCopy?.description}</span>
+                              </div>
+                            </div>
+                          )
+                        )}
+                      </div>
+                      {result?.model && (
+                        <span className="text-[10px] text-slate-400 ml-1">모델: {result.model}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
             </div>
           )}
           <div ref={messagesEndRef} />
@@ -551,7 +618,7 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
           </div>
         )}
 
-        {/* 하단 둥근 캡슐 입력 영역 (Gemini Capsule) - 그림자 글로우 효과 */}
+        {/* 하단 둥근 캡슐 입력 영역 (Gemini Capsule) */}
         <div className="px-4 sm:px-6 pb-4 sm:pb-6 bg-transparent shrink-0 relative z-10">
           <div className="max-w-2xl w-full mx-auto flex flex-col items-center">
             <div className="relative flex items-center w-full border border-slate-200 bg-white shadow-[0_4px_24px_rgba(99,102,241,0.06)] hover:shadow-[0_4px_30px_rgba(99,102,241,0.1)] focus-within:shadow-[0_4px_30px_rgba(99,102,241,0.15)] focus-within:border-indigo-500/50 rounded-3xl transition-all px-3 sm:px-4 py-1.5 sm:py-2">
