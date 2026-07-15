@@ -308,10 +308,10 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
       {/* 1. 좌측 사이드바 (과거 채팅 목록) - 슬라이딩 그라데이션 */}
       <div 
         className={`
-          absolute lg:relative top-0 left-0 bottom-0 z-40 lg:z-auto
-          h-full w-72 bg-gradient-to-b from-slate-50 via-slate-50/90 to-indigo-50/20 border-r border-slate-100 flex flex-col shrink-0
-          transition-transform lg:transition-all duration-300 ease-in-out shadow-xl lg:shadow-none
-          ${isSidebarOpen ? "translate-x-0 lg:w-72" : "-translate-x-full lg:translate-x-0 lg:w-0 lg:overflow-hidden"}
+          chatbot-sidebar
+          bg-gradient-to-b from-slate-50 via-slate-50/90 to-indigo-50/20 border-r border-slate-100 flex flex-col shrink-0
+          shadow-xl
+          ${isSidebarOpen ? "open" : "closed"}
         `}
       >
         <div className="p-4 flex flex-col h-full justify-between">
