@@ -1,4 +1,4 @@
-import { AlertCircle, Bot, Clock3, Loader2, MessageSquareWarning, SearchX, Send, Info } from "lucide-react";
+import { AlertCircle, Bot, Clock3, Loader2, MessageSquareWarning, SearchX, Send, Info, Menu, Plus, ChevronLeft, CornerDownLeft } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiBase, apiRequestJson, authHeaders } from "../../lib/api";
 import { normalizeChatHistoryEntries, normalizeChatQueryResult } from "../../lib/chat";
@@ -40,6 +40,29 @@ const STATUS_COPY: Record<ChatQueryResult["status"], { title: string; descriptio
   },
 };
 
+const SUGGESTIONS = [
+  {
+    title: "열차 고장 초기 조치",
+    desc: "운행 중 열차에 고장이 발생했을 때 기관사의 초기 보고 및 조치 절차는 어떻게 되나요?",
+    query: "운행 중 열차 고장 발생 시 기관사의 초기 보고 절차와 조치 요령을 알려줘."
+  },
+  {
+    title: "이례상황 방호 조치",
+    desc: "선로 내 이례상황 발생 시 인접 열차 방호 조치 기준과 통보 순서가 궁금합니다.",
+    query: "선로 내 이례상황 시 인접 열차 방호 조치 기준과 관제 통보 순서에 대해 설명해줘."
+  },
+  {
+    title: "비상 제동 완해 불가",
+    desc: "열차 비상 제동이 완해되지 않을 때 대처 요령과 비상 운전 취급 방법을 알려주세요.",
+    query: "비상 제동이 완해되지 않을 때 대처 요령과 후부 운전 등 비상 운전 방법을 설명해줘."
+  },
+  {
+    title: "신호 모진 시 대책",
+    desc: "정지 신호를 모진하여 열차가 통과했을 경우 대처 방안과 조치 사항을 설명해 주세요.",
+    query: "정지 신호 모진 통과 시 기관사의 즉각 조치 사항과 사후 대응 방법을 설명해줘."
+  }
+];
+
 function formatResetTime(iso: string) {
   if (!iso) return "-";
   return new Date(iso).toLocaleString("ko-KR", { timeZone: "Asia/Seoul", hour12: false });
@@ -53,6 +76,7 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
   const [requestError, setRequestError] = useState("");
   const [history, setHistory] = useState<ChatHistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -89,13 +113,13 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
 
   useEffect(() => {
     scrollToBottom();
-  }, [history, result?.answer, submitting]);
+  }, [history, result?.answer, submitting, activeQuestion]);
 
-  const handleSubmit = async () => {
-    if (!question.trim() || submitting) return;
+  const handleSubmit = async (customQuery?: string) => {
+    const queryToSend = (customQuery || question).trim();
+    if (!queryToSend || submitting) return;
 
-    const currentQuestion = question.trim();
-    setActiveQuestion(currentQuestion);
+    setActiveQuestion(queryToSend);
     setQuestion("");
     setResult(null);
     setRequestError("");
@@ -110,7 +134,7 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
           ...authHeaders,
         },
         body: JSON.stringify({
-          question: currentQuestion,
+          question: queryToSend,
           employeeId: currentUser?.employeeId || null,
           stream: true,
         }),
@@ -191,6 +215,25 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
     }
   };
 
+  const handleNewChat = () => {
+    setActiveQuestion("");
+    setResult(null);
+    setQuestion("");
+    setRequestError("");
+  };
+
+  const handleSelectHistoryEntry = (entry: ChatHistoryEntry) => {
+    setActiveQuestion(entry.question);
+    setResult(normalizeChatQueryResult({
+      status: entry.status,
+      answer: entry.answer,
+      model: entry.model,
+      sources: (entry as any).sources || [],
+      usage: usageInfo || { dailyLimit: 10, usedToday: 0, remainingToday: 10, resetsAt: "" }
+    }));
+    setRequestError("");
+  };
+
   const sortedHistory = useMemo(() => {
     return [...history].reverse();
   }, [history]);
@@ -202,10 +245,9 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
 
   const showActiveStream = (submitting || result) && !isLastHistorySameAsCurrent;
 
-  // 가장 최근 이용 정보 추출 (가장 최신 기록이나 결과에서 가져옴)
+  // 가장 최근 이용 정보 추출
   const usageInfo = useMemo(() => {
     if (result?.usage) return result.usage;
-    // 히스토리 항목들 중 첫 번째 항목(최신 항목)에서 사용량 정보를 유추할 수 있는지 체크
     if (history.length > 0 && (history[0] as any).usage) {
       return (history[0] as any).usage;
     }
@@ -213,200 +255,257 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
   }, [result, history]);
 
   return (
-    <section className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[1fr_320px] animate-fade-in-up">
-      {/* 좌측: 대화 인터페이스 */}
-      <div className="flex flex-col space-y-4">
-        <div className="border-b border-slate-100 pb-3">
-          <h2 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-blue-700 via-indigo-600 to-cyan-500 bg-clip-text text-transparent">불안제로 AI 챗봇</h2>
-          <p className="text-xs text-slate-500 mt-1">철도 안전 규정 및 이례상황 대응 절차에 대해 질문해 보세요.</p>
-        </div>
-
-        <Card className="border-slate-200 bg-white shadow-md rounded-2xl flex flex-col flex-1 overflow-hidden">
-          {/* 채팅 헤더 */}
-          <CardHeader className="bg-slate-50/50 border-b border-slate-100 py-3 px-5 flex flex-row items-center justify-between">
+    <div className="mx-auto max-w-7xl h-[780px] flex overflow-hidden border border-slate-200 rounded-3xl bg-white shadow-2xl animate-fade-in-up">
+      {/* 1. 좌측 사이드바 (과거 채팅 목록) */}
+      <div 
+        className={`${
+          isSidebarOpen ? "w-72" : "w-0"
+        } transition-all duration-300 ease-in-out border-r border-slate-100 bg-slate-50/70 flex flex-col shrink-0 h-full relative overflow-hidden`}
+      >
+        <div className="p-4 flex flex-col h-full justify-between">
+          <div className="flex-1 flex flex-col min-h-0">
+            {/* 새 대화 버튼 */}
             <div className="flex items-center gap-2">
-              <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-              <CardTitle className="text-sm font-semibold text-slate-700">실시간 안전 대응 지원</CardTitle>
+              <Button 
+                onClick={handleNewChat}
+                className="flex-1 justify-start gap-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 shadow-xs h-11 text-xs font-semibold"
+              >
+                <Plus className="h-4 w-4 text-slate-500" />
+                새로운 대화
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => setIsSidebarOpen(false)}
+                className="h-11 w-11 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
             </div>
-            {submitting && (
-              <Badge variant="secondary" className="animate-pulse bg-indigo-50 text-indigo-600 border border-indigo-100">
-                AI 분석 중
-              </Badge>
-            )}
-          </CardHeader>
 
-          {/* 채팅 말풍선 영역 */}
-          <div className="h-[520px] overflow-y-auto p-5 space-y-4 bg-slate-50/40 flex flex-col scrollbar-thin">
-            {historyLoading && history.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full space-y-2 text-slate-400">
-                <Loader2 className="h-6 w-6 animate-spin text-slate-300" />
-                <span className="text-sm">대화 기록을 불러오고 있습니다...</span>
+            {/* 과거 대화 히스토리 목록 */}
+            <div className="flex-1 overflow-y-auto mt-6 pr-1 space-y-4 scrollbar-thin">
+              <div className="px-2">
+                <p className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">최근 대화 목록</p>
               </div>
-            ) : sortedHistory.length === 0 && !showActiveStream ? (
-              <div className="flex flex-col items-center justify-center h-full text-center p-6 space-y-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-blue-600">
-                  <Bot className="h-6 w-6" />
+
+              {historyLoading && history.length === 0 ? (
+                <div className="px-2 py-4 flex items-center gap-2 text-xs text-slate-400">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  기록을 로딩하는 중...
                 </div>
+              ) : history.length === 0 ? (
+                <div className="px-2 py-4 text-xs text-slate-400 italic">
+                  이전 대화 기록이 없습니다.
+                </div>
+              ) : (
                 <div className="space-y-1">
-                  <p className="text-sm font-medium text-slate-800">새로운 대화를 시작해보세요!</p>
-                  <p className="text-xs text-slate-500 max-w-sm">
-                    "열차 고장 시 통보 순서", "이례 상황 시 방호 조치" 등 궁금한 승무 관련 규정을 물어보시면 인공지능이 찾아 드립니다.
+                  {history.map((entry) => {
+                    const isSelected = activeQuestion === entry.question;
+                    return (
+                      <div 
+                        key={entry.id}
+                        onClick={() => handleSelectHistoryEntry(entry)}
+                        className={`group flex items-center gap-2 px-3 py-2.5 text-xs rounded-xl cursor-pointer truncate font-medium transition-all ${
+                          isSelected 
+                            ? "bg-indigo-50 text-indigo-700 font-semibold border-l-4 border-indigo-600 pl-2" 
+                            : "text-slate-600 hover:bg-slate-100 hover:text-slate-800"
+                        }`}
+                      >
+                        <MessageSquareWarning className={`h-3.5 w-3.5 shrink-0 ${isSelected ? "text-indigo-600" : "text-slate-400"}`} />
+                        <span className="truncate flex-1">{entry.question}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 사이드바 하단 정보 패널 */}
+          <div className="mt-4 pt-4 border-t border-slate-100 space-y-3 bg-transparent">
+            {usageInfo && (
+              <div className="space-y-2 px-1">
+                <div className="flex justify-between text-[10px] font-bold text-slate-500">
+                  <span>오늘의 질문 횟수</span>
+                  <span>{usageInfo.usedToday}/{usageInfo.dailyLimit} 회</span>
+                </div>
+                <Progress value={(usageInfo.usedToday / usageInfo.dailyLimit) * 100} className="h-1.5 bg-slate-100 text-indigo-600" />
+                <p className="text-[9px] text-slate-400 text-center leading-none mt-1">자정 초기화 ({formatResetTime(usageInfo.resetsAt)})</p>
+              </div>
+            )}
+            
+            <Card className="border-0 bg-indigo-50/40 shadow-none rounded-xl p-3">
+              <div className="flex gap-2">
+                <Info className="h-3.5 w-3.5 text-indigo-600 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <p className="text-[10px] font-bold text-indigo-900">안전 특화 AI</p>
+                  <p className="text-[9px] text-slate-500 leading-normal">
+                    동대문승무사업소 승무 규정, 운전 취급 요령 등 안전 가이드 기반
                   </p>
                 </div>
               </div>
-            ) : (
-              <>
-                {/* 1. 과거 대화 기록 */}
-                {sortedHistory.map((entry) => (
-                  <div key={entry.id} className="space-y-3">
-                    {/* 사용자 질문 */}
-                    <div className="flex flex-col items-end space-y-1">
-                      <div className="bg-indigo-600 text-white rounded-2xl rounded-tr-none px-4 py-2.5 shadow-sm max-w-[80%] text-sm leading-relaxed whitespace-pre-wrap">
-                        {entry.question}
-                      </div>
-                    </div>
+            </Card>
+          </div>
+        </div>
+      </div>
 
-                    {/* AI 답변 */}
-                    <div className="flex items-start gap-3">
-                      <div className="flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-full bg-slate-200 border border-slate-300 text-slate-600 shadow-xs">
-                        <Bot className="h-4 w-4" />
-                      </div>
-                      <div className="flex flex-col space-y-1 max-w-[85%]">
-                        <div className="bg-white border border-slate-200 text-slate-800 rounded-2xl rounded-tl-none px-4 py-3 shadow-xs text-sm leading-relaxed">
-                          {entry.status === "success" ? (
-                            <>
-                              <MarkdownContent value={entry.answer} compact />
-                              {/* 출처 목록 링크 */}
-                              {(entry as any).sources && (entry as any).sources.length > 0 && (
-                                <div className="flex flex-wrap gap-1.5 mt-3 pt-2 border-t border-slate-100">
-                                  <span className="text-[10px] text-slate-400 mr-1 self-center">출처:</span>
-                                  {(entry as any).sources.map((src: ChatSource, i: number) => (
-                                    <Badge 
-                                      key={i} 
-                                      variant="outline" 
-                                      className="text-[10px] bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200 cursor-pointer transition-colors"
-                                      onClick={() => _onSelectSource(src)}
-                                    >
-                                      {src.title}
-                                    </Badge>
-                                  ))}
-                                </div>
-                              )}
-                            </>
-                          ) : (
-                            <div className="flex items-start gap-2 text-amber-600">
-                              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                              <div className="flex flex-col">
-                                <span className="font-semibold text-xs">{STATUS_COPY[entry.status]?.title || entry.status}</span>
-                                <span className="text-[11px] text-slate-500">{STATUS_COPY[entry.status]?.description}</span>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 text-[10px] text-slate-400 ml-1">
-                          <span>모델: {entry.model}</span>
-                          <span>•</span>
-                          <span>{new Date(entry.createdAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}</span>
-                        </div>
-                      </div>
+      {/* 2. 중앙 대화 영역 */}
+      <div className="flex-1 flex flex-col h-full bg-white relative">
+        {/* 상단 툴바 */}
+        <div className="h-14 border-b border-slate-100 px-6 flex items-center justify-between bg-white shrink-0">
+          <div className="flex items-center gap-3">
+            {!isSidebarOpen && (
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => setIsSidebarOpen(true)}
+                className="h-9 w-9 rounded-lg text-slate-500 hover:bg-slate-100 mr-1"
+              >
+                <Menu className="h-4 w-4" />
+              </Button>
+            )}
+            <h3 className="text-sm font-bold text-slate-800">
+              {activeQuestion ? "대화 진행 중" : "새로운 질문"}
+            </h3>
+            {result?.model && (
+              <Badge variant="outline" className="text-[9px] text-slate-500 bg-slate-50 hover:bg-slate-50 border-slate-200">
+                모델: {result.model}
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-slate-400">동대문승무사업소 AI 챗봇</span>
+          </div>
+        </div>
+
+        {/* 대화 스크롤 영역 */}
+        <div className="flex-1 overflow-y-auto px-6 py-8 space-y-6 flex flex-col bg-white scrollbar-thin">
+          {!activeQuestion ? (
+            /* 대화가 없을 때 (웰컴 화면) */
+            <div className="flex-1 flex flex-col items-center justify-center max-w-2xl mx-auto text-center space-y-8 my-auto animate-fade-in">
+              <div className="space-y-3">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 shadow-sm">
+                  <Bot className="h-7 w-7" />
+                </div>
+                <h2 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-blue-700 via-indigo-600 to-cyan-500 bg-clip-text text-transparent">
+                  무엇을 도와드릴까요?
+                </h2>
+                <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+                  철도 안전 규정, 이례상황 조치 가이드, 승무 보고 절차 등 궁금하신 점을 자유롭게 입력해 주세요.
+                </p>
+              </div>
+
+              {/* 추천 질문 Grid */}
+              <div className="grid grid-cols-2 gap-3.5 w-full pt-4">
+                {SUGGESTIONS.map((s, idx) => (
+                  <div 
+                    key={idx}
+                    onClick={() => handleSubmit(s.query)}
+                    className="p-4 rounded-2xl border border-slate-100 bg-slate-50/50 hover:bg-indigo-50/30 hover:border-indigo-100 text-left cursor-pointer transition-all duration-200 group flex flex-col justify-between h-[100px]"
+                  >
+                    <div>
+                      <p className="text-xs font-bold text-slate-700 group-hover:text-indigo-700 transition-colors">{s.title}</p>
+                      <p className="text-[10px] text-slate-500 mt-1 line-clamp-2 leading-relaxed">{s.desc}</p>
+                    </div>
+                    <div className="flex items-center justify-end text-slate-400 group-hover:text-indigo-600 transition-colors">
+                      <CornerDownLeft className="h-3 w-3" />
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          ) : (
+            /* 대화가 존재할 때 */
+            <div className="max-w-3xl w-full mx-auto space-y-8 flex flex-col flex-1">
+              {/* 1. 사용자 질문 (Gemini 메신저 스타일) */}
+              <div className="flex flex-col items-end space-y-1">
+                <div className="bg-slate-100 text-slate-800 rounded-3xl rounded-tr-none px-5 py-3 shadow-xs max-w-[80%] text-sm leading-relaxed whitespace-pre-wrap font-medium">
+                  {activeQuestion}
+                </div>
+              </div>
 
-                {/* 2. 현재 활성화 스트리밍 대화 */}
-                {showActiveStream && (
-                  <div className="space-y-3">
-                    {/* 사용자 임시 말풍선 */}
-                    <div className="flex flex-col items-end space-y-1">
-                      <div className="bg-indigo-600 text-white rounded-2xl rounded-tr-none px-4 py-2.5 shadow-sm max-w-[80%] text-sm leading-relaxed whitespace-pre-wrap">
-                        {activeQuestion}
+              {/* 2. AI 답변 (배경 없는 세련된 Gemini 레이아웃) */}
+              <div className="flex items-start gap-4">
+                <div className="flex h-9 w-9 shrink-0 select-none items-center justify-center rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600 shadow-sm mt-0.5">
+                  <Bot className="h-4.5 w-4.5" />
+                </div>
+                <div className="flex flex-col space-y-2 flex-1 min-w-0">
+                  <div className="text-slate-800 text-sm leading-relaxed space-y-3">
+                    {submitting && !result?.answer ? (
+                      <div className="flex items-center gap-2 py-2 text-slate-400">
+                        <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                        <span className="text-xs">답변을 생성하고 있습니다...</span>
                       </div>
-                    </div>
-
-                    {/* AI 실시간 스트리밍 답변 */}
-                    <div className="flex items-start gap-3">
-                      <div className="flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-full bg-indigo-50 border border-indigo-100 text-indigo-600 shadow-xs">
-                        <Bot className="h-4 w-4" />
-                      </div>
-                      <div className="flex flex-col space-y-1 max-w-[85%]">
-                        <div className="bg-white border border-slate-200 text-slate-800 rounded-2xl rounded-tl-none px-4 py-3 shadow-xs text-sm leading-relaxed min-w-[100px]">
-                          {submitting && !result?.answer ? (
-                            <div className="flex items-center gap-2 py-1 text-slate-400">
-                              <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />
-                              <span className="text-xs">답변을 작성하고 있습니다...</span>
+                    ) : (
+                      result?.status === "success" || !result ? (
+                        <>
+                          <MarkdownContent value={result?.answer} compact />
+                          
+                          {/* 출처 목록 배지 표시 */}
+                          {result?.sources && result.sources.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 mt-4 pt-3 border-t border-slate-100">
+                              <span className="text-[10px] text-slate-400 mr-1 self-center font-semibold">참고 출처:</span>
+                              {result.sources.map((src, i) => (
+                                <Badge 
+                                  key={i} 
+                                  variant="outline" 
+                                  className="text-[10px] bg-slate-50 hover:bg-indigo-50 text-slate-600 hover:text-indigo-700 border-slate-200 hover:border-indigo-200 cursor-pointer transition-colors px-2 py-0.5 rounded-lg"
+                                  onClick={() => _onSelectSource(src)}
+                                >
+                                  {src.title}
+                                </Badge>
+                              ))}
                             </div>
-                          ) : (
-                            result?.status === "success" || !result ? (
-                              <>
-                                <MarkdownContent value={result?.answer} compact />
-                                {/* 스트리밍 중에도 출처 표기 */}
-                                {result?.sources && result.sources.length > 0 && (
-                                  <div className="flex flex-wrap gap-1.5 mt-3 pt-2 border-t border-slate-100">
-                                    <span className="text-[10px] text-slate-400 mr-1 self-center">출처:</span>
-                                    {result.sources.map((src, i) => (
-                                      <Badge 
-                                        key={i} 
-                                        variant="outline" 
-                                        className="text-[10px] bg-slate-50 hover:bg-indigo-50 text-indigo-700 border-indigo-100 cursor-pointer transition-colors"
-                                        onClick={() => _onSelectSource(src)}
-                                      >
-                                        {src.title}
-                                      </Badge>
-                                    ))}
-                                  </div>
-                                )}
-                              </>
-                            ) : (
-                              <div className="flex items-start gap-2 text-amber-600">
-                                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                                <div className="flex flex-col">
-                                  <span className="font-semibold text-xs">{statusCopy?.title}</span>
-                                  <span className="text-[11px] text-slate-500">{statusCopy?.description}</span>
-                                </div>
-                              </div>
-                            )
                           )}
+                        </>
+                      ) : (
+                        <div className="flex items-start gap-2.5 text-amber-600 bg-amber-50/50 border border-amber-100 rounded-2xl p-4">
+                          <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-bold text-xs">{statusCopy?.title}</span>
+                            <span className="text-[11px] text-slate-500">{statusCopy?.description}</span>
+                          </div>
                         </div>
-                        {result?.model && (
-                          <span className="text-[10px] text-slate-400 ml-1">모델: {result.model}</span>
-                        )}
-                      </div>
-                    </div>
+                      )
+                    )}
                   </div>
-                )}
-              </>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* 에러 발생 알럿 */}
-          {requestError && (
-            <div className="px-5 py-2">
-              <Alert variant="destructive" className="rounded-xl py-2">
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle className="text-xs font-semibold">요청 실패</AlertTitle>
-                <AlertDescription className="text-xs">{requestError}</AlertDescription>
-              </Alert>
+                </div>
+              </div>
             </div>
           )}
+          <div ref={messagesEndRef} />
+        </div>
 
-          {/* 채팅 입력 영역 */}
-          <div className="p-4 border-t border-slate-100 bg-white">
-            <div className="relative flex items-center">
+        {/* 에러 발생 알럿 */}
+        {requestError && (
+          <div className="max-w-2xl w-full mx-auto px-6 py-2">
+            <Alert variant="destructive" className="rounded-xl py-2 shadow-xs">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle className="text-xs font-bold">요청 오류</AlertTitle>
+              <AlertDescription className="text-xs">{requestError}</AlertDescription>
+            </Alert>
+          </div>
+        )}
+
+        {/* 하단 둥근 캡슐 입력 영역 (Gemini 스타일) */}
+        <div className="px-6 pb-6 bg-white shrink-0">
+          <div className="max-w-2xl w-full mx-auto flex flex-col items-center">
+            <div className="relative flex items-center w-full border border-slate-200 rounded-3xl bg-slate-50 focus-within:border-indigo-500 focus-within:bg-white transition-all shadow-inner focus-within:shadow-md px-4 py-2">
               <Textarea
                 rows={1}
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={submitting ? "답변 완료를 기다리는 중..." : "규정에 대해 질문해 보세요... (Enter 전송, Shift+Enter 줄바꿈)"}
+                placeholder={submitting ? "답변이 출력되는 중입니다..." : "규정에 대해 질문해 보세요... (Enter 전송)"}
                 disabled={submitting}
-                className="min-h-[48px] max-h-[120px] resize-none pr-12 rounded-2xl border-slate-200 focus-visible:ring-indigo-500 py-3 shadow-inner text-sm scrollbar-none"
+                className="flex-1 min-h-[40px] max-h-[120px] resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 py-2.5 text-sm scrollbar-none pr-10"
               />
               <Button
                 size="icon"
-                onClick={handleSubmit}
+                onClick={() => handleSubmit()}
                 disabled={submitting || !question.trim()}
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white h-8.5 w-8.5 disabled:bg-slate-100 disabled:text-slate-400 transition-colors shadow-sm"
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white h-9 w-9 flex items-center justify-center transition-all shadow-xs disabled:bg-slate-200 disabled:text-slate-400"
               >
                 {submitting ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -415,76 +514,12 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
                 )}
               </Button>
             </div>
+            <p className="text-[10px] text-slate-400 mt-2 text-center leading-none">
+              AI가 생성한 답변은 부정확할 수 있으므로, 현업 적용 전 공식 규정 문서를 최종 확인하시기 바랍니다.
+            </p>
           </div>
-        </Card>
+        </div>
       </div>
-
-      {/* 우측: 정보 및 현황 사이드바 */}
-      <div className="space-y-4">
-        {/* 챗봇 프로필 정보 */}
-        <Card className="border-slate-200 bg-white shadow-sm rounded-2xl overflow-hidden">
-          <CardHeader className="bg-indigo-50/50 border-b border-indigo-100/50 py-4 px-5">
-            <CardTitle className="text-sm font-bold text-indigo-900 flex items-center gap-2">
-              <Info className="h-4 w-4 text-indigo-600" />
-              챗봇 정보
-            </CardTitle>
-            <CardDescription className="text-[11px] text-slate-500">
-              불안제로 AI 어시스턴트
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="py-4 px-5 space-y-4">
-            <div className="text-xs text-slate-600 leading-relaxed space-y-2">
-              <p>
-                본 챗봇은 동대문승무사업소의 공식 승무 규정, 운전 취급 요령, 그리고 사고 조치 가이드라인을 학습한 안전 특화 AI 비서입니다.
-              </p>
-              <p className="font-semibold text-indigo-700 pt-1">
-                주요 질문 분야:
-              </p>
-              <ul className="list-disc pl-4 space-y-1 text-slate-500">
-                <li>차량 고장 대처 절차</li>
-                <li>승무 보고 및 방호 조치</li>
-                <li>신호 모진 및 규정 위반 대책</li>
-              </ul>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* 오늘 사용량 현황 */}
-        {usageInfo && (
-          <Card className="border-slate-200 bg-white shadow-sm rounded-2xl overflow-hidden">
-            <CardHeader className="py-4 px-5 border-b border-slate-100">
-              <CardTitle className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                <Clock3 className="h-4 w-4 text-blue-600" />
-                오늘의 사용 현황
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="py-4 px-5 space-y-4">
-              <div className="space-y-2">
-                <div className="flex justify-between text-xs font-semibold text-slate-600">
-                  <span>질문 사용량</span>
-                  <span>{usageInfo.usedToday} / {usageInfo.dailyLimit} 회</span>
-                </div>
-                <Progress value={(usageInfo.usedToday / usageInfo.dailyLimit) * 100} className="h-2 bg-slate-100 text-blue-600" />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
-                <div className="text-center bg-slate-50 rounded-xl p-2">
-                  <p className="text-[10px] text-slate-400">남은 질문</p>
-                  <p className="text-sm font-bold text-slate-700">{usageInfo.remainingToday}회</p>
-                </div>
-                <div className="text-center bg-slate-50 rounded-xl p-2">
-                  <p className="text-[10px] text-slate-400">초기화 기준</p>
-                  <p className="text-sm font-bold text-slate-700">매일 자정</p>
-                </div>
-              </div>
-
-              <p className="text-[10px] text-slate-400 leading-normal text-center">
-                최종 초기화: {formatResetTime(usageInfo.resetsAt)}
-              </p>
-            </CardContent>
-          </Card>
-        )}
-      </div>
-    </section>
+    </div>
   );
 }
