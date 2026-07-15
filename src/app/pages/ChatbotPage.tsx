@@ -474,35 +474,38 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
               </div>
             </div>
           ) : (
-            /* 대화가 존재할 때 (대화 이력 전체 세로 스크롤 구조 복원) */
+            /* 대화가 존재할 때 (현재 활성화된 단일 문답만 표시) */
             <div className="max-w-3xl w-full mx-auto space-y-6 flex flex-col flex-1 z-10 px-2 sm:px-4">
-              
-              {/* 1. 과거 대화 타임라인 */}
-              {sortedHistory.map((entry) => (
-                <div key={entry.id} className="space-y-6">
-                  {/* 사용자 질문 */}
-                  <div className="flex flex-col items-end space-y-1">
-                    <div className="bg-gradient-to-br from-indigo-500 via-indigo-600 to-blue-600 text-white rounded-3xl rounded-tr-none px-4 sm:px-5 py-2.5 sm:py-3 shadow-xs max-w-[85%] sm:max-w-[80%] text-sm leading-relaxed whitespace-pre-wrap font-medium border-b border-indigo-700/30">
-                      {entry.question}
-                    </div>
+              <div className="space-y-6">
+                {/* 사용자 질문 */}
+                <div className="flex flex-col items-end space-y-1">
+                  <div className="bg-gradient-to-br from-indigo-500 via-indigo-600 to-blue-600 text-white rounded-3xl rounded-tr-none px-4 sm:px-5 py-2.5 sm:py-3 shadow-xs max-w-[85%] sm:max-w-[80%] text-sm leading-relaxed whitespace-pre-wrap font-medium border-b border-indigo-700/30">
+                    {activeQuestion}
                   </div>
+                </div>
 
-                  {/* AI 답변 */}
-                  <div className="flex items-start gap-3 sm:gap-4">
-                    <div className="flex h-9 w-9 shrink-0 select-none items-center justify-center rounded-xl bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-100 text-indigo-600 shadow-sm mt-0.5">
-                      <Bot className="h-4.5 w-4.5" />
-                    </div>
-                    <div className="flex flex-col space-y-2 flex-1 min-w-0">
-                      <div className="text-slate-800 text-sm leading-relaxed space-y-3 bg-white/70 backdrop-blur-xs border border-slate-100/85 rounded-3xl rounded-tl-none p-4 sm:p-5 shadow-xs">
-                        {entry.status === "success" ? (
+                {/* AI 답변 */}
+                <div className="flex items-start gap-3 sm:gap-4">
+                  <div className="flex h-9 w-9 shrink-0 select-none items-center justify-center rounded-xl bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-100 text-indigo-600 shadow-sm mt-0.5">
+                    <Bot className="h-4.5 w-4.5" />
+                  </div>
+                  <div className="flex flex-col space-y-2 flex-1 min-w-0">
+                    <div className="text-slate-800 text-sm leading-relaxed space-y-3 bg-white/70 backdrop-blur-xs border border-slate-100/85 rounded-3xl rounded-tl-none p-4 sm:p-5 shadow-xs min-w-[100px]">
+                      {submitting && !result?.answer ? (
+                        <div className="flex items-center gap-2.5 py-2 text-slate-450">
+                          <Loader2 className="h-4.5 w-4.5 animate-spin text-indigo-600" />
+                          <span className="text-xs font-semibold">답변을 정교하게 분석하는 중...</span>
+                        </div>
+                      ) : (
+                        result?.status === "success" || !result ? (
                           <>
-                            <MarkdownContent value={entry.answer} compact />
+                            <MarkdownContent value={result?.answer || ""} compact />
                             
                             {/* 출처 목록 배지 표시 */}
-                            {(entry as any).sources && (entry as any).sources.length > 0 && (
+                            {result?.sources && result.sources.length > 0 && (
                               <div className="flex flex-wrap gap-1.5 mt-4 pt-3.5 border-t border-slate-100">
                                 <span className="text-[10px] text-slate-400 mr-1.5 self-center font-bold">참고 출처:</span>
-                                {(entry as any).sources.map((src: ChatSource, i: number) => (
+                                {result.sources.map((src: ChatSource, i: number) => (
                                   <Badge 
                                     key={i} 
                                     variant="outline" 
@@ -519,84 +522,27 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
                           <div className="flex items-start gap-2.5 text-amber-600 bg-amber-50/50 border border-amber-100 rounded-2xl p-4">
                             <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
                             <div className="flex flex-col gap-0.5">
-                              <span className="font-bold text-xs">{STATUS_COPY[entry.status]?.title || entry.status}</span>
-                              <span className="text-[11px] text-slate-500">{STATUS_COPY[entry.status]?.description}</span>
+                              <span className="font-bold text-xs">{STATUS_COPY[result.status]?.title || result.status}</span>
+                              <span className="text-[11px] text-slate-500">{STATUS_COPY[result.status]?.description}</span>
                             </div>
                           </div>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 text-[10px] text-slate-455 ml-1">
-                        <span>모델: {entry.model}</span>
-                        <span>•</span>
-                        <span>{new Date(entry.createdAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}</span>
-                      </div>
+                        )
+                      )}
                     </div>
-                  </div>
-                </div>
-              ))}
-
-              {/* 2. 현재 활성 스트리밍 대화 */}
-              {showActiveStream && (
-                <div className="space-y-6 animate-fade-in-up">
-                  {/* 사용자 임시 말풍선 */}
-                  <div className="flex flex-col items-end space-y-1">
-                    <div className="bg-gradient-to-br from-indigo-500 via-indigo-600 to-blue-600 text-white rounded-3xl rounded-tr-none px-4 sm:px-5 py-2.5 sm:py-3 shadow-xs max-w-[85%] sm:max-w-[80%] text-sm leading-relaxed whitespace-pre-wrap font-medium border-b border-indigo-700/30">
-                      {activeQuestion}
-                    </div>
-                  </div>
-
-                  {/* AI 실시간 스트리밍 답변 */}
-                  <div className="flex items-start gap-3 sm:gap-4">
-                    <div className="flex h-9 w-9 shrink-0 select-none items-center justify-center rounded-xl bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-100 text-indigo-600 shadow-sm mt-0.5">
-                      <Bot className="h-4.5 w-4.5" />
-                    </div>
-                    <div className="flex flex-col space-y-2 flex-1 min-w-0">
-                      <div className="text-slate-800 text-sm leading-relaxed space-y-3 bg-white/70 backdrop-blur-xs border border-slate-100/85 rounded-3xl rounded-tl-none p-4 sm:p-5 shadow-xs min-w-[100px]">
-                        {submitting && !result?.answer ? (
-                          <div className="flex items-center gap-2.5 py-2 text-slate-450">
-                            <Loader2 className="h-4.5 w-4.5 animate-spin text-indigo-600" />
-                            <span className="text-xs font-semibold">답변을 정교하게 분석하는 중...</span>
-                          </div>
-                        ) : (
-                          result?.status === "success" || !result ? (
-                            <>
-                              <MarkdownContent value={result?.answer} compact />
-                              {/* 스트리밍 중에도 출처 표기 */}
-                              {result?.sources && result.sources.length > 0 && (
-                                <div className="flex flex-wrap gap-1.5 mt-4 pt-3.5 border-t border-slate-100">
-                                  <span className="text-[10px] text-slate-400 mr-1.5 self-center font-bold">참고 출처:</span>
-                                  {result.sources.map((src, i) => (
-                                    <Badge 
-                                      key={i} 
-                                      variant="outline" 
-                                      className="text-[10px] bg-slate-50 hover:bg-indigo-600 hover:text-white border-slate-200 hover:border-indigo-600 cursor-pointer transition-all duration-200 px-2 py-0.5 rounded-lg font-medium shadow-3xs"
-                                      onClick={() => _onSelectSource(src)}
-                                    >
-                                      {src.title}
-                                    </Badge>
-                                  ))}
-                                </div>
-                              )}
-                            </>
-                          ) : (
-                            <div className="flex items-start gap-2.5 text-amber-600 bg-amber-50/50 border border-amber-100 rounded-2xl p-4">
-                              <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
-                              <div className="flex flex-col gap-0.5">
-                                <span className="font-bold text-xs">{statusCopy?.title}</span>
-                                <span className="text-[11px] text-slate-500">{statusCopy?.description}</span>
-                              </div>
-                            </div>
-                          )
-                        )}
-                      </div>
-                      {result?.model && (
-                        <span className="text-[10px] text-slate-400 ml-1">모델: {result.model}</span>
+                    
+                    {/* 모델 및 생성 시각 정보 */}
+                    <div className="flex items-center gap-2 text-[10px] text-slate-400 ml-1">
+                      {result?.model && <span>모델: {result.model}</span>}
+                      {result?.createdAt && (
+                        <>
+                          <span>•</span>
+                          <span>{new Date(result.createdAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}</span>
+                        </>
                       )}
                     </div>
                   </div>
                 </div>
-              )}
-
+              </div>
             </div>
           )}
           <div ref={messagesEndRef} />
