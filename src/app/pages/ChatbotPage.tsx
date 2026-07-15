@@ -422,9 +422,6 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
             >
               <Menu className="h-4.5 w-4.5" />
             </Button>
-            <h3 className="text-sm font-bold text-slate-800 truncate ml-1">
-              {activeQuestion ? "대화 진행 중" : "새로운 질문"}
-            </h3>
             {result?.model && (
               <Badge variant="outline" className="text-[9px] text-slate-500 bg-slate-50 hover:bg-slate-50 border-slate-200 shrink-0 hidden sm:inline-flex">
                 모델: {result.model}
