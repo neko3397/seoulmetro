@@ -2,9 +2,10 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { CalendarDays, Download, FileText, Heart, MessageCircle, UserRound } from "lucide-react";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf.mjs";
 import pdfWorkerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
-import { CommunityPost } from "../../types/content";
+import { CommunityPost, ChatSource } from "../../types/content";
 import { Badge } from "../../components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
+import { MarkdownContent } from "../../components/MarkdownContent";
 import { formatDateTime } from "../utils";
 
 const mapPrototype = Map.prototype as Map<unknown, unknown> & {
@@ -43,6 +44,7 @@ function isSamsungInternetBrowser() {
 
 interface CommunityPostDetailPageProps {
   post: CommunityPost | null;
+  highlightSource?: ChatSource | null;
 }
 
 interface PdfInlineRendererProps {
@@ -226,8 +228,19 @@ function PdfInlineRenderer({ url, title }: PdfInlineRendererProps) {
   );
 }
 
-export function CommunityPostDetailPage({ post }: CommunityPostDetailPageProps) {
+export function CommunityPostDetailPage({ post, highlightSource }: CommunityPostDetailPageProps) {
   if (!post) return null;
+
+  const contentCardRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!post || !highlightSource) return;
+
+    const timer = setTimeout(() => {
+      contentCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [post, highlightSource]);
 
   const imageAssets = post.assets.filter((asset) => asset.assetType === "image");
   const documentAssets = post.assets.filter((asset) => asset.assetType === "document");
@@ -270,9 +283,18 @@ export function CommunityPostDetailPage({ post }: CommunityPostDetailPageProps) 
       </section>
       <div className="p-2" />
 
-      <DetailSection title="" description={post.content ?? undefined}>
-        <></>
-      </DetailSection>
+      <div 
+        ref={contentCardRef}
+        className={`transition-all duration-500 rounded-[1.9rem] ${
+          highlightSource 
+            ? "ring-2 ring-amber-500/80 bg-amber-50/5 shadow-lg shadow-amber-500/5 scroll-mt-24" 
+            : ""
+        }`}
+      >
+        <DetailSection title="게시물 본문">
+          <MarkdownContent value={post.content} highlightSource={highlightSource} />
+        </DetailSection>
+      </div>
 
       {imageAssets.length > 0 ? (
         <DetailSection

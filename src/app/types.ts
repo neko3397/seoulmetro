@@ -1,4 +1,4 @@
-import { CommunityPost, FeedItem, GuideCategory, GuideDetail } from "../types/content";
+import { ChatSource, CommunityPost, FeedItem, GuideCategory, GuideDetail } from "../types/content";
 import { Video } from "../types/video";
 
 export interface Category {
@@ -31,6 +31,7 @@ export interface NavigationState {
   video?: Video | null;
   guide?: GuideDetail | null;
   post?: CommunityPost | null;
+  highlightSource?: ChatSource | null;
 }
 
 export interface NavigateOptions {

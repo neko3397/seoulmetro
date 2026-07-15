@@ -206,4 +206,64 @@ export const isSameNavigationState = (a: Partial<NavigationState> | null, b: Par
   (a?.topicId || "") === (b.topicId || "") &&
   (a?.video?.id || "") === (b.video?.id || "") &&
   (a?.guide?.id || "") === (b.guide?.id || "") &&
-  (a?.post?.id || "") === (b.post?.id || "");
+  (a?.post?.id || "") === (b.post?.id || "") &&
+  (a?.highlightSource?.sourceId || "") === (b.highlightSource?.sourceId || "");
+
+export const extractHighlightText = (snippet: string): string => {
+  let text = snippet || "";
+
+  // 1. RAG chunk.content 에 삽입되는 메타데이터 라벨들을 지운다.
+  const metadataPatterns = [
+    /문서\s*제목:\s*.*?(?=(문서\s*유형:|섹션\s*경로:|섹션\s*제목:|$))/g,
+    /문서\s*유형:\s*.*?(?=(문서\s*제목:|섹션\s*경로:|섹션\s*제목:|$))/g,
+    /섹션\s*경로:\s*.*?(?=(문서\s*제목:|문서\s*유형:|섹션\s*제목:|$))/g,
+    /섹션\s*제목:\s*.*?(?=(문서\s*제목:|문서\s*유형:|섹션\s*경로:|$))/g,
+  ];
+
+  metadataPatterns.forEach((pattern) => {
+    text = text.replace(pattern, "");
+  });
+
+  // 2. "가이드 제목: " 같은 잔여물이 있을 수 있으니 콜론(:)이 있는 경우 우측 부분만 가져온다.
+  if (text.includes(": ")) {
+    const parts = text.split(": ");
+    text = parts[parts.length - 1];
+  }
+
+  return text.replace(/\s+/g, " ").trim();
+};
+
+export const highlightHtml = (html: string, highlightText: string): string => {
+  if (!highlightText || highlightText.length < 3) return html;
+
+  // 전체 검색어로 먼저 통째로 매칭을 시도
+  const escapedSearch = highlightText.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
+  const fullRegex = new RegExp(`(${escapedSearch})(?![^<>]*>)`, "gi");
+  if (fullRegex.test(html)) {
+    return html.replace(fullRegex, '<mark class="bg-amber-100 text-amber-900 px-1 py-0.5 rounded font-bold shadow-2xs">$1</mark>');
+  }
+
+  // 통째로 매칭이 안 되면, 3단어씩 조합하여 매칭 시도
+  const words = highlightText.split(" ").filter((w) => w.length >= 2);
+  if (words.length === 0) return html;
+
+  let currentHtml = html;
+  const chunks: string[] = [];
+  const chunkSize = 3;
+  for (let i = 0; i < words.length; i += 1) {
+    const chunk = words.slice(i, i + chunkSize).join(" ");
+    if (chunk.length >= 5) {
+      chunks.push(chunk);
+    }
+  }
+
+  chunks.sort((a, b) => b.length - a.length);
+
+  chunks.forEach((chunk) => {
+    const escapedChunk = chunk.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
+    const regex = new RegExp(`(${escapedChunk})(?![^<>]*>)`, "gi");
+    currentHtml = currentHtml.replace(regex, '<mark class="bg-amber-100 text-amber-900 px-1 py-0.5 rounded font-bold shadow-2xs">$1</mark>');
+  });
+
+  return currentHtml;
+};

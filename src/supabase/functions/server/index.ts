@@ -748,6 +748,7 @@ function buildChatSources(chunks: any[]) {
         type: metadata.targetType === "guide" ? "guide" : "post",
         id: String(metadata.targetId || metadata.guideId || metadata.postId || ""),
       },
+      sectionId: metadata.sectionId || null,
     };
 
     if (!existing || nextSource.score > existing.score) {

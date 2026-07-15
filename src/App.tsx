@@ -98,6 +98,9 @@ export default function App() {
   const [selectedPost, setSelectedPost] = useState<CommunityPost | null>(
     (restoredNavigationState.post as CommunityPost) || null,
   );
+  const [selectedHighlightSource, setSelectedHighlightSource] = useState<ChatSource | null>(
+    (restoredNavigationState.highlightSource as ChatSource) || null,
+  );
   const [categories, setCategories] = useState<Category[]>([]);
   const [videosByCategory, setVideosByCategory] = useState<Record<string, Video[]>>({});
   const [guideCategories, setGuideCategories] = useState<GuideCategory[]>([]);
@@ -186,6 +189,7 @@ export default function App() {
     setSelectedVideo(state.video || null);
     setSelectedGuide(state.guide || null);
     setSelectedPost(state.post || null);
+    setSelectedHighlightSource(state.highlightSource || null);
     persistNavigationState(state);
   };
 
@@ -196,6 +200,7 @@ export default function App() {
       video?: Video | null;
       guide?: GuideDetail | null;
       post?: CommunityPost | null;
+      highlightSource?: ChatSource | null;
     } = {},
     options: NavigateOptions = {},
   ) => {
@@ -209,6 +214,7 @@ export default function App() {
       video: context.video !== undefined ? context.video : selectedVideo,
       guide: context.guide !== undefined ? context.guide : selectedGuide,
       post: context.post !== undefined ? context.post : selectedPost,
+      highlightSource: context.highlightSource !== undefined ? context.highlightSource : selectedHighlightSource,
     };
     const isRapidDuplicateNavigation =
       !!lastNavigationRequestRef.current &&
@@ -222,6 +228,7 @@ export default function App() {
       video: nextComparableState.video,
       guide: nextComparableState.guide,
       post: nextComparableState.post,
+      highlightSource: nextComparableState.highlightSource,
     };
     lastNavigationRequestRef.current = {
       state: nextComparableState,
@@ -246,6 +253,7 @@ export default function App() {
         video: selectedVideo,
         guide: selectedGuide,
         post: selectedPost,
+        highlightSource: selectedHighlightSource,
       };
       persistNavigationState(stateToPersist);
       history.replaceState(stateToPersist, "", window.location.href);
@@ -592,16 +600,17 @@ export default function App() {
 
   const loadCommunityPostDetail = async (
     postId: string,
-    { force = false, silent = false, navigate = true }: { force?: boolean; silent?: boolean; navigate?: boolean } = {},
+    { force = false, silent = false, navigate = true, highlightSource = null }: { force?: boolean; silent?: boolean; navigate?: boolean; highlightSource?: ChatSource | null } = {},
   ) => {
     const cacheKey = getCommunityPostCacheKey(postId);
     const cachedPost = readCachedValue<CommunityPost>(cacheKey);
 
     if (!force && cachedPost) {
       if (navigate) {
-        navigateTo("communityPostDetail", { post: cachedPost });
+        navigateTo("communityPostDetail", { post: cachedPost, highlightSource });
       } else {
         setSelectedPost(cachedPost);
+        setSelectedHighlightSource(highlightSource);
       }
       return;
     }
@@ -614,15 +623,17 @@ export default function App() {
       if (data.post) {
         writeCachedValue(cacheKey, data.post);
         if (navigate) {
-          navigateTo("communityPostDetail", { post: data.post });
+          navigateTo("communityPostDetail", { post: data.post, highlightSource });
         } else {
           setSelectedPost(data.post);
+          setSelectedHighlightSource(highlightSource);
         }
       }
     } catch (error) {
       console.error("Failed to load community post detail:", error);
       if (cachedPost && !navigate) {
         setSelectedPost(cachedPost);
+        setSelectedHighlightSource(highlightSource);
       }
     } finally {
       if (!silent) {
@@ -642,7 +653,7 @@ export default function App() {
     if (source.target.type === "guide") {
       const targetGuide = guides.find((guide) => guide.id === source.target.id);
       if (targetGuide) {
-        navigateTo("wikiDetail", { guide: targetGuide, video: null, post: null });
+        navigateTo("wikiDetail", { guide: targetGuide, video: null, post: null, highlightSource: source });
         return;
       }
 
@@ -651,12 +662,12 @@ export default function App() {
         (guide) => guide.id === source.target.id,
       );
       if (refreshedGuide) {
-        navigateTo("wikiDetail", { guide: refreshedGuide, video: null, post: null });
+        navigateTo("wikiDetail", { guide: refreshedGuide, video: null, post: null, highlightSource: source });
       }
       return;
     }
 
-    await loadCommunityPostDetail(source.target.id, { force: true, silent: true, navigate: true });
+    await loadCommunityPostDetail(source.target.id, { force: true, silent: true, navigate: true, highlightSource: source });
   };
 
   const withRouteFallback = (content: ReactNode, message = "페이지를 불러오는 중...") => (
@@ -920,7 +931,7 @@ export default function App() {
                   <CardContent className="py-16 text-center">게시물 상세를 불러오는 중...</CardContent>
                 </Card>
               ) : (
-                withRouteFallback(<CommunityPostDetailPage post={selectedPost} />, "게시물 화면을 불러오는 중...")
+                withRouteFallback(<CommunityPostDetailPage post={selectedPost} highlightSource={selectedHighlightSource} />, "게시물 화면을 불러오는 중...")
               )
             ) : null}
 
@@ -955,7 +966,7 @@ export default function App() {
               )
             ) : null}
 
-            {currentView === "wikiDetail" ? withRouteFallback(<WikiDetailPage guide={selectedGuide} />) : null}
+            {currentView === "wikiDetail" ? withRouteFallback(<WikiDetailPage guide={selectedGuide} highlightSource={selectedHighlightSource} />) : null}
 
             {currentView === "personalizedEducation" ? (
               withRouteFallback(

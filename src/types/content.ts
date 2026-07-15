@@ -124,6 +124,7 @@ export interface ChatSource {
   snippet: string;
   score: number;
   target: ChatSourceTarget;
+  sectionId?: string | null;
 }
 
 export interface ChatUsage {

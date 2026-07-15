@@ -1,15 +1,51 @@
-import { GuideDetail } from "../../types/content";
+import { useEffect } from "react";
+import { GuideDetail, ChatSource } from "../../types/content";
 import { Badge } from "../../components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { MarkdownContent } from "../../components/MarkdownContent";
-import { formatDateTime } from "../utils";
+import { formatDateTime, extractHighlightText } from "../utils";
 
 interface WikiDetailPageProps {
   guide: GuideDetail | null;
+  highlightSource?: ChatSource | null;
 }
 
-export function WikiDetailPage({ guide }: WikiDetailPageProps) {
+export function WikiDetailPage({ guide, highlightSource }: WikiDetailPageProps) {
   if (!guide) return null;
+
+  useEffect(() => {
+    if (!guide || !highlightSource) return;
+
+    // 1. sectionId가 지정되어 있다면 해당 섹션으로 스크롤
+    if (highlightSource.sectionId) {
+      const target = document.getElementById(`guide-section-${highlightSource.sectionId}`);
+      if (target) {
+        const timer = setTimeout(() => {
+          target.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 200);
+        return () => clearTimeout(timer);
+      }
+    }
+
+    // 2. sectionId가 없거나 매칭 실패 시, snippet 텍스트와 매칭되는 섹션을 찾아 스크롤
+    if (highlightSource.snippet) {
+      const cleanSnippet = extractHighlightText(highlightSource.snippet).replace(/\s+/g, "").toLowerCase();
+      if (cleanSnippet.length >= 4) {
+        for (const section of guide.sections) {
+          const cleanContent = section.markdownContent.replace(/\s+/g, "").toLowerCase();
+          if (cleanContent.includes(cleanSnippet) || cleanSnippet.includes(cleanContent.slice(0, 30))) {
+            const target = document.getElementById(`guide-section-${section.id}`);
+            if (target) {
+              const timer = setTimeout(() => {
+                target.scrollIntoView({ behavior: "smooth", block: "start" });
+              }, 200);
+              return () => clearTimeout(timer);
+            }
+          }
+        }
+      }
+    }
+  }, [guide, highlightSource]);
 
   return (
     <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[320px_minmax(0,1fr)] lg:items-start animate-fade-in-up">
@@ -45,16 +81,37 @@ export function WikiDetailPage({ guide }: WikiDetailPageProps) {
           <p className="text-sm text-slate-500">{formatDateTime(guide.updatedAt)}</p>
         </div>
 
-        {guide.sections.map((section) => (
-          <Card key={section.id} id={`guide-section-${section.id}`} className="scroll-mt-24 border-slate-200 shadow-none">
-            <CardHeader className="border-b border-slate-100">
-              <CardTitle className="text-2xl text-slate-900">{section.title}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <MarkdownContent value={section.markdownContent} />
-            </CardContent>
-          </Card>
-        ))}
+        {guide.sections.map((section) => {
+          const isHighlighted = highlightSource && (
+            section.id === highlightSource.sectionId ||
+            (highlightSource.snippet && 
+             section.markdownContent.replace(/\s+/g, "").toLowerCase().includes(
+               extractHighlightText(highlightSource.snippet).replace(/\s+/g, "").toLowerCase().slice(0, 15)
+             ))
+          );
+
+          return (
+            <Card 
+              key={section.id} 
+              id={`guide-section-${section.id}`} 
+              className={`scroll-mt-24 border-slate-200 shadow-none transition-all duration-500 ${
+                isHighlighted 
+                  ? "ring-2 ring-amber-500/80 bg-amber-50/5 shadow-md shadow-amber-500/5" 
+                  : ""
+              }`}
+            >
+              <CardHeader className="border-b border-slate-100">
+                <CardTitle className="text-2xl text-slate-900">{section.title}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <MarkdownContent 
+                  value={section.markdownContent} 
+                  highlightSource={isHighlighted ? highlightSource : null} 
+                />
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
     </div>
   );
