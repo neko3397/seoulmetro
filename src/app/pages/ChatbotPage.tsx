@@ -463,7 +463,7 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
                 {/* 사용자 질문 */}
                 <div className="flex flex-col space-y-1">
                   <div className="text-slate-900 text-sm font-bold leading-relaxed whitespace-pre-wrap">
-                    Q. {activeQuestion}
+                    {activeQuestion}
                   </div>
                 </div>
 
@@ -478,9 +478,6 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
                     ) : (
                       result?.status === "success" || !result ? (
                         <div className="space-y-3">
-                          <div className="font-bold text-slate-900 text-sm">
-                            A.
-                          </div>
                           <div className="min-w-0">
                             <MarkdownContent value={result?.answer || ""} compact />
                           </div>
