@@ -392,17 +392,7 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
               </div>
             )}
             
-            <Card className="border border-slate-200 bg-white shadow-none rounded-xl p-3">
-              <div className="flex gap-2">
-                <Info className="h-3.5 w-3.5 text-slate-600 shrink-0 mt-0.5" />
-                <div className="space-y-0.5">
-                  <p className="text-[10px] font-semibold text-slate-800">안전 특화 AI</p>
-                  <p className="text-[9px] text-slate-500 leading-normal">
-                    동대문승무사업소 승무 규정, 운전 취급 요령 등 안전 가이드 기반
-                  </p>
-                </div>
-              </div>
-            </Card>
+
           </div>
         </div>
       </div>
