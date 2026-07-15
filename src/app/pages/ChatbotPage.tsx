@@ -309,7 +309,7 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
       <div 
         className={`
           chatbot-sidebar
-          bg-[#f9f9f9] border-r border-slate-200 flex flex-col shrink-0
+          bg-slate-50/90 border-r border-slate-200/60 flex flex-col shrink-0
           shadow-none
           ${isSidebarOpen ? "open" : "closed"}
         `}
@@ -363,13 +363,13 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
                       <div 
                         key={entry.id}
                         onClick={() => handleSelectHistoryEntry(entry)}
-                        className={`group flex items-center gap-2 px-3 py-2.5 text-xs rounded-xl cursor-pointer truncate font-medium transition-all ${
+                        className={`group flex items-center gap-2.5 px-3 py-2.5 text-xs rounded-xl cursor-pointer truncate font-medium transition-all ${
                           isSelected 
-                            ? "bg-slate-200 text-slate-950"
-                            : "text-slate-700 hover:bg-slate-200 hover:text-slate-950"
+                            ? "bg-slate-900 text-white shadow-xs font-semibold"
+                            : "text-slate-650 hover:bg-slate-200/60 hover:text-slate-900"
                         }`}
                       >
-                        <MessageSquare className={`h-3.5 w-3.5 shrink-0 ${isSelected ? "text-slate-800" : "text-slate-400"}`} />
+                        <MessageSquare className={`h-3.5 w-3.5 shrink-0 ${isSelected ? "text-white" : "text-slate-400 group-hover:text-slate-600"}`} />
                         <span className="truncate flex-1">{entry.question}</span>
                       </div>
                     );
@@ -398,9 +398,9 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
       </div>
 
       {/* 2. 중앙 대화 영역 */}
-      <div className="flex-1 flex flex-col h-full bg-white relative min-w-0">
+      <div className="flex-1 flex flex-col h-full bg-slate-50/50 relative min-w-0">
         {/* 상단 툴바 - 항상 노출되는 사이드바 토글 버튼 */}
-        <div className="h-14 border-b border-slate-100 px-4 sm:px-6 flex items-center justify-between bg-white shrink-0 animate-fade-in">
+        <div className="h-14 border-b border-slate-200/60 px-4 sm:px-6 flex items-center justify-between bg-white shrink-0 animate-fade-in">
           <div className="flex items-center gap-3 min-w-0">
             {/* 상단 툴바 왼쪽에 항상 배치되는 메뉴 버튼 */}
             <Button 
@@ -443,10 +443,10 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
                   <div 
                     key={idx}
                     onClick={() => handleSubmit(s.query)}
-                    className="p-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:shadow-sm text-left cursor-pointer transition-all duration-200 group flex flex-col justify-between min-h-[106px] h-auto"
+                    className="p-4.5 rounded-xl border border-slate-200/80 bg-white hover:border-slate-350 hover:bg-white hover:shadow-md text-left cursor-pointer transition-all duration-200 group flex flex-col justify-between min-h-[106px] h-auto"
                   >
                     <div className="mb-2">
-                      <p className="text-sm font-medium text-slate-800 transition-colors">{s.title}</p>
+                      <p className="text-sm font-semibold text-slate-800 group-hover:text-slate-950 transition-colors">{s.title}</p>
                       <p className="text-xs text-slate-500 mt-1.5 line-clamp-2 leading-relaxed">{s.desc}</p>
                     </div>
                     <div className="flex items-center justify-end text-slate-400 group-hover:text-slate-800 transition-colors mt-auto pt-1">
@@ -462,7 +462,7 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
               <div className="space-y-6">
                 {/* 사용자 질문 */}
                 <div className="flex flex-col items-end space-y-1">
-                  <div className="bg-slate-100 text-slate-900 rounded-2xl px-4 sm:px-5 py-3 max-w-[85%] sm:max-w-[80%] text-sm leading-relaxed whitespace-pre-wrap">
+                  <div className="bg-slate-900 text-white rounded-2xl rounded-tr-none px-4.5 py-3 max-w-[85%] sm:max-w-[75%] text-[13.5px] leading-relaxed whitespace-pre-wrap shadow-xs font-medium">
                     {activeQuestion}
                   </div>
                 </div>
@@ -472,16 +472,16 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
                   <div className="flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-full bg-slate-900 text-white mt-0.5">
                     <Bot className="h-4.5 w-4.5" />
                   </div>
-                  <div className="flex flex-col space-y-2 flex-1 min-w-0">
-                    <div className="text-slate-800 text-sm leading-relaxed space-y-3 min-w-[100px] pt-1">
+                  <div className="flex flex-col space-y-2.5 flex-1 min-w-0">
+                    <div className="bg-white border border-slate-200/80 rounded-2xl rounded-tl-none p-5 sm:p-6 text-slate-800 text-[13.5px] leading-relaxed shadow-sm min-w-[100px]">
                       {submitting && !result?.answer ? (
-                        <div className="flex items-center gap-2.5 py-2 text-slate-450">
+                        <div className="flex items-center gap-2.5 py-1 text-slate-500">
                           <Loader2 className="h-4.5 w-4.5 animate-spin text-slate-700" />
                           <span className="text-xs font-semibold">답변을 정교하게 분석하는 중...</span>
                         </div>
                       ) : (
                         result?.status === "success" || !result ? (
-                          <>
+                          <div className="space-y-4">
                             <MarkdownContent value={result?.answer || ""} compact />
                             
                             {/* 출처 목록 배지 표시 */}
@@ -492,7 +492,7 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
                                   <Badge 
                                     key={i} 
                                     variant="outline" 
-                                    className="text-[10px] bg-white hover:bg-slate-100 text-slate-600 border-slate-200 cursor-pointer transition-all duration-200 px-2 py-0.5 rounded-lg font-medium shadow-none"
+                                    className="text-[10px] bg-slate-50 hover:bg-slate-150/70 text-slate-650 border-slate-200 cursor-pointer transition-all duration-200 px-2 py-0.5 rounded-lg font-medium shadow-none"
                                     onClick={() => _onSelectSource(src)}
                                   >
                                     {src.title}
@@ -500,9 +500,9 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
                                 ))}
                               </div>
                             )}
-                          </>
+                          </div>
                         ) : (
-                          <div className="flex items-start gap-2.5 text-amber-600 bg-amber-50/50 border border-amber-100 rounded-2xl p-4">
+                          <div className="flex items-start gap-2.5 text-amber-600 bg-amber-50/50 border border-amber-100 rounded-xl p-4">
                             <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
                             <div className="flex flex-col gap-0.5">
                               <span className="font-bold text-xs">{STATUS_COPY[result.status]?.title || result.status}</span>
@@ -514,7 +514,7 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
                     </div>
                     
                     {/* 생성 시각 정보 */}
-                    <div className="flex items-center gap-2 text-[10px] text-slate-400 ml-1">
+                    <div className="flex items-center gap-2 text-[10px] text-slate-400 ml-2">
                       {result?.createdAt && (
                         <span>{new Date(result.createdAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}</span>
                       )}
@@ -538,9 +538,9 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
           </div>
         )}
 
-        <div className="px-4 sm:px-6 pb-4 sm:pb-6 bg-white shrink-0 relative z-10">
+        <div className="px-4 sm:px-6 pb-4 sm:pb-6 pt-4 bg-white border-t border-slate-100 shrink-0 relative z-10">
           <div className="max-w-3xl w-full mx-auto flex flex-col items-center">
-            <div className="relative flex items-center w-full border border-slate-300 bg-white shadow-sm hover:shadow-md focus-within:border-slate-400 rounded-[26px] transition-all px-3 sm:px-4 py-1.5 sm:py-2">
+            <div className="relative flex items-center w-full border border-slate-250 bg-white shadow-sm hover:shadow-md focus-within:border-slate-900 focus-within:ring-2 focus-within:ring-slate-900/5 rounded-[26px] transition-all px-3 sm:px-4 py-1.5 sm:py-2">
               <Textarea
                 rows={1}
                 value={question}
@@ -548,13 +548,13 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
                 onKeyDown={handleKeyDown}
                 placeholder={submitting ? "답변을 생성하고 있습니다..." : "무엇이든 물어보세요"}
                 disabled={submitting}
-                className="flex-1 min-h-[44px] max-h-[140px] resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 py-2.5 text-sm scrollbar-none pr-10"
+                className="flex-1 min-h-[44px] max-h-[140px] resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 py-2.5 text-sm scrollbar-none pr-10 text-slate-800 placeholder:text-slate-400"
               />
               <Button
                 size="icon"
                 onClick={() => handleSubmit()}
                 disabled={submitting || !question.trim()}
-                className="absolute right-2.5 sm:right-3.5 top-1/2 -translate-y-1/2 rounded-full bg-slate-900 hover:bg-slate-700 text-white h-8 sm:h-9 w-8 sm:w-9 flex items-center justify-center transition-all shadow-sm disabled:bg-slate-200 disabled:text-slate-400"
+                className="absolute right-2.5 sm:right-3.5 top-1/2 -translate-y-1/2 rounded-full bg-slate-900 hover:bg-slate-800 hover:scale-105 active:scale-95 text-white h-8 sm:h-9 w-8 sm:w-9 flex items-center justify-center transition-all shadow-sm disabled:bg-slate-200 disabled:text-slate-400 disabled:scale-100"
               >
                 {submitting ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
