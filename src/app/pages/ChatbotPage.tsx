@@ -76,6 +76,7 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
   const [requestError, setRequestError] = useState("");
   const [history, setHistory] = useState<ChatHistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
   
   // 모바일은 기본 닫힘, 데스크톱은 기본 열림
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
@@ -90,19 +91,22 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
   const statusCopy = useMemo(() => (result ? STATUS_COPY[result.status] : null), [result]);
 
   const loadHistory = async () => {
-    if (!currentUser?.employeeId) {
+    const empId = currentUser?.employeeId || (currentUser as any)?.employee_id || null;
+    if (!empId) {
       setHistory([]);
       return;
     }
 
     try {
       setHistoryLoading(true);
+      setHistoryError("");
       const response = await apiRequestJson<{ history?: unknown[] }>(
-        `/chat/history?employeeId=${encodeURIComponent(currentUser.employeeId)}`,
+        `/chat/history?employeeId=${encodeURIComponent(empId)}`,
       );
       setHistory(normalizeChatHistoryEntries(response.history));
     } catch (error) {
       console.error("Failed to load chat history:", error);
+      setHistoryError(error instanceof Error ? error.message : "알 수 없는 오류");
       setHistory([]);
     } finally {
       setHistoryLoading(false);
@@ -111,7 +115,7 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
 
   useEffect(() => {
     void loadHistory();
-  }, [currentUser?.employeeId]);
+  }, [currentUser]);
 
   // 화면 리사이즈 감지 로직
   useEffect(() => {
@@ -342,6 +346,11 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
                 <div className="px-2 py-4 flex items-center gap-2 text-xs text-slate-400">
                   <Loader2 className="h-3 w-3 animate-spin" />
                   기록을 로딩하는 중...
+                </div>
+              ) : historyError ? (
+                <div className="px-2 py-4 text-xs text-rose-500 flex items-center gap-1.5 font-medium bg-rose-50/50 rounded-xl border border-rose-100/50">
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                  로딩 실패: {historyError}
                 </div>
               ) : history.length === 0 ? (
                 <div className="px-2 py-4 text-xs text-slate-400 italic">
