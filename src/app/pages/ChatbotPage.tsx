@@ -116,7 +116,7 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
       if (!reader) throw new Error("응답 스트림을 읽을 수 없습니다.");
 
       const decoder = new TextDecoder();
-      let accumulatedAnswer = "";
+      let streamBuffer = "";
       
       // 초기 상태 설정
       setResult(normalizeChatQueryResult({
@@ -129,14 +129,12 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
         if (done) break;
 
         const chunk = decoder.decode(value, { stream: true });
+        streamBuffer += chunk;
         
         // JSON 구분자 \u241F 체크
-        if (chunk.includes("\u241F")) {
-          const parts = chunk.split("\u241F");
-          // \u241F 이전은 텍스트 청크일 수 있음
-          if (parts[0]) {
-            accumulatedAnswer += parts[0];
-          }
+        if (streamBuffer.includes("\u241F")) {
+          const parts = streamBuffer.split("\u241F");
+          const answerPart = parts[0];
           
           // \u241F 이후는 JSON 메타데이터
           const jsonPart = parts.slice(1).join("\u241F");
@@ -145,19 +143,18 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
               const metadata = JSON.parse(jsonPart);
               setResult(normalizeChatQueryResult({
                 ...metadata,
-                answer: accumulatedAnswer, // 답변은 누적된 것 유지
+                answer: answerPart, // 답변은 누적된 것 유지
               }));
             } catch (e) {
               console.error("Failed to parse final metadata:", e, jsonPart);
               // 메타데이터 파싱 실패해도 지금까지의 답변은 유지
-              setResult(prev => prev ? { ...prev, answer: accumulatedAnswer } : null);
+              setResult(prev => prev ? { ...prev, answer: answerPart } : null);
             }
           } else {
-            setResult(prev => prev ? { ...prev, answer: accumulatedAnswer } : null);
+            setResult(prev => prev ? { ...prev, answer: answerPart } : null);
           }
         } else {
-          accumulatedAnswer += chunk;
-          setResult(prev => prev ? { ...prev, answer: accumulatedAnswer } : null);
+          setResult(prev => prev ? { ...prev, answer: streamBuffer } : null);
         }
       }
 

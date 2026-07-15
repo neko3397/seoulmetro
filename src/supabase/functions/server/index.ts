@@ -2018,28 +2018,50 @@ async function createChatAnswer(question: string, employeeId: string | null, str
           return;
         }
 
+        let buffer = "";
+
         try {
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
 
-            const chunk = decoder.decode(value, { stream: true });
-            const lines = chunk.split("\n").filter((line) => line.trim());
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
             
+            // 마지막 라인은 아직 완성되지 않은 청크일 수 있으므로 버퍼에 보관
+            buffer = lines.pop() || "";
+
             for (const line of lines) {
-              if (line === "data: [DONE]") continue;
-              if (line.startsWith("data: ")) {
+              const trimmedLine = line.trim();
+              if (!trimmedLine) continue;
+              if (trimmedLine === "data: [DONE]") continue;
+              if (trimmedLine.startsWith("data: ")) {
                 try {
-                  const data = JSON.parse(line.slice(6));
+                  const data = JSON.parse(trimmedLine.slice(6));
                   const delta = data.choices[0]?.delta?.content || "";
                   if (delta) {
                     fullAnswer += delta;
                     controller.enqueue(encoder.encode(delta));
                   }
                 } catch (e) {
-                  console.error("Error parsing stream chunk:", e, line);
+                  console.error("Error parsing stream chunk:", e, trimmedLine);
                 }
               }
+            }
+          }
+
+          // 스트림 종료 시 버퍼에 남은 잔여 데이터 처리
+          const finalLine = buffer.trim();
+          if (finalLine && finalLine.startsWith("data: ") && finalLine !== "data: [DONE]") {
+            try {
+              const data = JSON.parse(finalLine.slice(6));
+              const delta = data.choices[0]?.delta?.content || "";
+              if (delta) {
+                fullAnswer += delta;
+                controller.enqueue(encoder.encode(delta));
+              }
+            } catch (e) {
+              console.error("Error parsing final stream chunk:", e, finalLine);
             }
           }
 
