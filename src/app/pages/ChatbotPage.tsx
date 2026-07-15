@@ -431,8 +431,9 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
               </Badge>
             )}
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="text-[10px] text-slate-400 font-semibold tracking-wide">동대문승무사업소 AI 챗봇</span>
+          <div className="flex items-center gap-1.5 shrink-0 bg-indigo-50/50 border border-indigo-100/50 rounded-lg px-2 py-1">
+            <Bot className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+            <span className="text-[10px] text-indigo-950 font-bold tracking-wide">동대문승무사업소 AI 챗봇</span>
           </div>
         </div>
 
@@ -448,9 +449,6 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
               </div>
 
               <div className="space-y-3.5 px-4">
-                <div className="mx-auto flex h-13 w-13 sm:h-15 sm:w-15 items-center justify-center rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 shadow-md">
-                  <Bot className="h-6.5 w-6.5 sm:h-7.5 sm:w-7.5" />
-                </div>
                 <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 bg-clip-text text-transparent animate-pulse py-1">
                   무엇을 도와드릴까요?
                 </h2>
