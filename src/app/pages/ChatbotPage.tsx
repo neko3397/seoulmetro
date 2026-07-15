@@ -76,7 +76,14 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
   const [requestError, setRequestError] = useState("");
   const [history, setHistory] = useState<ChatHistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  
+  // 모바일은 기본 닫힘, 데스크톱은 기본 열림
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    if (typeof window !== "undefined") {
+      return window.innerWidth >= 1024;
+    }
+    return true;
+  });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -106,6 +113,23 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
     void loadHistory();
   }, [currentUser?.employeeId]);
 
+  // 화면 리사이즈 감지 로직
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 1024) {
+        setIsSidebarOpen(false);
+      } else {
+        setIsSidebarOpen(true);
+      }
+    };
+
+    window.addEventListener("resize", handleResize);
+    // 마운트 시 한 번 더 상태 체크
+    handleResize();
+
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   // 스크롤 하단 이동 로직
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -123,6 +147,11 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
     setQuestion("");
     setResult(null);
     setRequestError("");
+
+    // 모바일 환경인 경우, 질문을 보내면 사이드바를 자동으로 닫습니다.
+    if (window.innerWidth < 1024) {
+      setIsSidebarOpen(false);
+    }
 
     try {
       setSubmitting(true);
@@ -220,6 +249,10 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
     setResult(null);
     setQuestion("");
     setRequestError("");
+    // 모바일이면 새 대화 시 사이드바를 자동으로 닫습니다.
+    if (window.innerWidth < 1024) {
+      setIsSidebarOpen(false);
+    }
   };
 
   const handleSelectHistoryEntry = (entry: ChatHistoryEntry) => {
@@ -232,6 +265,11 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
       usage: usageInfo || { dailyLimit: 10, usedToday: 0, remainingToday: 10, resetsAt: "" }
     }));
     setRequestError("");
+    
+    // 모바일에서 히스토리 선택 시 사이드바 자동 닫기
+    if (window.innerWidth < 1024) {
+      setIsSidebarOpen(false);
+    }
   };
 
   const sortedHistory = useMemo(() => {
@@ -255,16 +293,27 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
   }, [result, history]);
 
   return (
-    <div className="mx-auto max-w-7xl h-[780px] flex overflow-hidden border border-slate-200 rounded-3xl bg-white shadow-2xl animate-fade-in-up">
+    <div className="mx-auto max-w-7xl h-[calc(100vh-120px)] lg:h-[780px] flex overflow-hidden border border-slate-200 rounded-3xl bg-white shadow-2xl animate-fade-in-up relative">
+      {/* 모바일 화면에서 사이드바 오픈 시 배경을 어둡게 가리는 딤(Dim) 레이어 */}
+      {isSidebarOpen && (
+        <div 
+          className="absolute inset-0 bg-slate-900/30 z-30 lg:hidden animate-fade-in"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
       {/* 1. 좌측 사이드바 (과거 채팅 목록) */}
       <div 
-        className={`${
-          isSidebarOpen ? "w-72" : "w-0"
-        } transition-all duration-300 ease-in-out border-r border-slate-100 bg-slate-50/70 flex flex-col shrink-0 h-full relative overflow-hidden`}
+        className={`
+          absolute lg:relative top-0 left-0 bottom-0 z-40 lg:z-auto
+          h-full w-72 bg-slate-50 border-r border-slate-100 flex flex-col shrink-0
+          transition-transform lg:transition-all duration-300 ease-in-out shadow-xl lg:shadow-none
+          ${isSidebarOpen ? "translate-x-0 lg:w-72" : "-translate-x-full lg:translate-x-0 lg:w-0 lg:overflow-hidden"}
+        `}
       >
         <div className="p-4 flex flex-col h-full justify-between">
           <div className="flex-1 flex flex-col min-h-0">
-            {/* 새 대화 버튼 */}
+            {/* 새 대화 버튼 및 사이드바 닫기 버튼 */}
             <div className="flex items-center gap-2">
               <Button 
                 onClick={handleNewChat}
@@ -351,62 +400,62 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
       </div>
 
       {/* 2. 중앙 대화 영역 */}
-      <div className="flex-1 flex flex-col h-full bg-white relative">
+      <div className="flex-1 flex flex-col h-full bg-white relative min-w-0">
         {/* 상단 툴바 */}
-        <div className="h-14 border-b border-slate-100 px-6 flex items-center justify-between bg-white shrink-0">
-          <div className="flex items-center gap-3">
+        <div className="h-14 border-b border-slate-100 px-4 sm:px-6 flex items-center justify-between bg-white shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
             {!isSidebarOpen && (
               <Button 
                 variant="ghost" 
                 size="icon" 
                 onClick={() => setIsSidebarOpen(true)}
-                className="h-9 w-9 rounded-lg text-slate-500 hover:bg-slate-100 mr-1"
+                className="h-9 w-9 rounded-lg text-slate-500 hover:bg-slate-100 mr-1 shrink-0"
               >
                 <Menu className="h-4 w-4" />
               </Button>
             )}
-            <h3 className="text-sm font-bold text-slate-800">
+            <h3 className="text-sm font-bold text-slate-800 truncate">
               {activeQuestion ? "대화 진행 중" : "새로운 질문"}
             </h3>
             {result?.model && (
-              <Badge variant="outline" className="text-[9px] text-slate-500 bg-slate-50 hover:bg-slate-50 border-slate-200">
+              <Badge variant="outline" className="text-[9px] text-slate-500 bg-slate-50 hover:bg-slate-50 border-slate-200 shrink-0 hidden sm:inline-flex">
                 모델: {result.model}
               </Badge>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <span className="text-[10px] text-slate-400">동대문승무사업소 AI 챗봇</span>
           </div>
         </div>
 
         {/* 대화 스크롤 영역 */}
-        <div className="flex-1 overflow-y-auto px-6 py-8 space-y-6 flex flex-col bg-white scrollbar-thin">
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6 flex flex-col bg-white scrollbar-thin">
           {!activeQuestion ? (
             /* 대화가 없을 때 (웰컴 화면) */
-            <div className="flex-1 flex flex-col items-center justify-center max-w-2xl mx-auto text-center space-y-8 my-auto animate-fade-in">
-              <div className="space-y-3">
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 shadow-sm">
-                  <Bot className="h-7 w-7" />
+            <div className="flex-1 flex flex-col items-center justify-center max-w-2xl mx-auto text-center space-y-8 my-auto animate-fade-in w-full">
+              <div className="space-y-3 px-4">
+                <div className="mx-auto flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 shadow-sm">
+                  <Bot className="h-6 w-6 sm:h-7 sm:w-7" />
                 </div>
-                <h2 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-blue-700 via-indigo-600 to-cyan-500 bg-clip-text text-transparent">
+                <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight bg-gradient-to-r from-blue-700 via-indigo-600 to-cyan-500 bg-clip-text text-transparent">
                   무엇을 도와드릴까요?
                 </h2>
-                <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+                <p className="text-[11px] sm:text-xs text-slate-500 max-w-sm sm:max-w-md mx-auto leading-relaxed">
                   철도 안전 규정, 이례상황 조치 가이드, 승무 보고 절차 등 궁금하신 점을 자유롭게 입력해 주세요.
                 </p>
               </div>
 
-              {/* 추천 질문 Grid */}
-              <div className="grid grid-cols-2 gap-3.5 w-full pt-4">
+              {/* 추천 질문 Grid (모바일은 1열, 데스크톱은 2열) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full pt-2 sm:pt-4 max-w-xl px-4 sm:px-0">
                 {SUGGESTIONS.map((s, idx) => (
                   <div 
                     key={idx}
                     onClick={() => handleSubmit(s.query)}
-                    className="p-4 rounded-2xl border border-slate-100 bg-slate-50/50 hover:bg-indigo-50/30 hover:border-indigo-100 text-left cursor-pointer transition-all duration-200 group flex flex-col justify-between h-[100px]"
+                    className="p-3 sm:p-4 rounded-2xl border border-slate-100 bg-slate-50/50 hover:bg-indigo-50/30 hover:border-indigo-100 text-left cursor-pointer transition-all duration-200 group flex flex-col justify-between h-[85px] sm:h-[100px]"
                   >
                     <div>
-                      <p className="text-xs font-bold text-slate-700 group-hover:text-indigo-700 transition-colors">{s.title}</p>
-                      <p className="text-[10px] text-slate-500 mt-1 line-clamp-2 leading-relaxed">{s.desc}</p>
+                      <p className="text-xs font-bold text-slate-700 group-hover:text-indigo-700 transition-colors truncate">{s.title}</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5 sm:mt-1 line-clamp-2 leading-relaxed">{s.desc}</p>
                     </div>
                     <div className="flex items-center justify-end text-slate-400 group-hover:text-indigo-600 transition-colors">
                       <CornerDownLeft className="h-3 w-3" />
@@ -418,17 +467,17 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
           ) : (
             /* 대화가 존재할 때 */
             <div className="max-w-3xl w-full mx-auto space-y-8 flex flex-col flex-1">
-              {/* 1. 사용자 질문 (Gemini 메신저 스타일) */}
+              {/* 1. 사용자 질문 */}
               <div className="flex flex-col items-end space-y-1">
-                <div className="bg-slate-100 text-slate-800 rounded-3xl rounded-tr-none px-5 py-3 shadow-xs max-w-[80%] text-sm leading-relaxed whitespace-pre-wrap font-medium">
+                <div className="bg-slate-100 text-slate-800 rounded-3xl rounded-tr-none px-4 sm:px-5 py-2.5 sm:py-3 shadow-xs max-w-[85%] sm:max-w-[80%] text-sm leading-relaxed whitespace-pre-wrap font-medium">
                   {activeQuestion}
                 </div>
               </div>
 
-              {/* 2. AI 답변 (배경 없는 세련된 Gemini 레이아웃) */}
-              <div className="flex items-start gap-4">
-                <div className="flex h-9 w-9 shrink-0 select-none items-center justify-center rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600 shadow-sm mt-0.5">
-                  <Bot className="h-4.5 w-4.5" />
+              {/* 2. AI 답변 */}
+              <div className="flex items-start gap-3 sm:gap-4">
+                <div className="flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 select-none items-center justify-center rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600 shadow-sm mt-0.5">
+                  <Bot className="h-4 sm:h-4.5 w-4 sm:w-4.5" />
                 </div>
                 <div className="flex flex-col space-y-2 flex-1 min-w-0">
                   <div className="text-slate-800 text-sm leading-relaxed space-y-3">
@@ -479,7 +528,7 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
 
         {/* 에러 발생 알럿 */}
         {requestError && (
-          <div className="max-w-2xl w-full mx-auto px-6 py-2">
+          <div className="max-w-2xl w-full mx-auto px-4 sm:px-6 py-2">
             <Alert variant="destructive" className="rounded-xl py-2 shadow-xs">
               <AlertCircle className="h-4 w-4" />
               <AlertTitle className="text-xs font-bold">요청 오류</AlertTitle>
@@ -488,10 +537,10 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
           </div>
         )}
 
-        {/* 하단 둥근 캡슐 입력 영역 (Gemini 스타일) */}
-        <div className="px-6 pb-6 bg-white shrink-0">
+        {/* 하단 둥근 캡슐 입력 영역 */}
+        <div className="px-4 sm:px-6 pb-4 sm:pb-6 bg-white shrink-0">
           <div className="max-w-2xl w-full mx-auto flex flex-col items-center">
-            <div className="relative flex items-center w-full border border-slate-200 rounded-3xl bg-slate-50 focus-within:border-indigo-500 focus-within:bg-white transition-all shadow-inner focus-within:shadow-md px-4 py-2">
+            <div className="relative flex items-center w-full border border-slate-200 rounded-3xl bg-slate-50 focus-within:border-indigo-500 focus-within:bg-white transition-all shadow-inner focus-within:shadow-md px-3 sm:px-4 py-1.5 sm:py-2">
               <Textarea
                 rows={1}
                 value={question}
@@ -499,13 +548,13 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
                 onKeyDown={handleKeyDown}
                 placeholder={submitting ? "답변이 출력되는 중입니다..." : "규정에 대해 질문해 보세요... (Enter 전송)"}
                 disabled={submitting}
-                className="flex-1 min-h-[40px] max-h-[120px] resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 py-2.5 text-sm scrollbar-none pr-10"
+                className="flex-1 min-h-[40px] max-h-[120px] resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 py-2 sm:py-2.5 text-sm scrollbar-none pr-10"
               />
               <Button
                 size="icon"
                 onClick={() => handleSubmit()}
                 disabled={submitting || !question.trim()}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white h-9 w-9 flex items-center justify-center transition-all shadow-xs disabled:bg-slate-200 disabled:text-slate-400"
+                className="absolute right-2.5 sm:right-3.5 top-1/2 -translate-y-1/2 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white h-8 sm:h-9 w-8 sm:w-9 flex items-center justify-center transition-all shadow-xs disabled:bg-slate-200 disabled:text-slate-400"
               >
                 {submitting ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -514,7 +563,7 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
                 )}
               </Button>
             </div>
-            <p className="text-[10px] text-slate-400 mt-2 text-center leading-none">
+            <p className="text-[9px] sm:text-[10px] text-slate-400 mt-2 text-center leading-normal px-2">
               AI가 생성한 답변은 부정확할 수 있으므로, 현업 적용 전 공식 규정 문서를 최종 확인하시기 바랍니다.
             </p>
           </div>
