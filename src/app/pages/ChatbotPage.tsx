@@ -461,64 +461,64 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
             <div className="max-w-3xl w-full mx-auto space-y-7 flex flex-col flex-1 z-10 px-2 sm:px-4">
               <div className="space-y-6">
                 {/* 사용자 질문 */}
-                <div className="flex flex-col items-end space-y-1">
-                  <div className="bg-slate-900 text-white rounded-2xl rounded-tr-none px-4.5 py-3 max-w-[85%] sm:max-w-[75%] text-[13.5px] leading-relaxed whitespace-pre-wrap shadow-xs font-medium">
-                    {activeQuestion}
+                <div className="flex flex-col space-y-1">
+                  <div className="text-slate-900 text-sm font-bold leading-relaxed whitespace-pre-wrap">
+                    Q. {activeQuestion}
                   </div>
                 </div>
 
                 {/* AI 답변 */}
-                <div className="flex items-start gap-3 sm:gap-4">
-                  <div className="flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-full bg-slate-900 text-white mt-0.5">
-                    <Bot className="h-4.5 w-4.5" />
-                  </div>
-                  <div className="flex flex-col space-y-2.5 flex-1 min-w-0">
-                    <div className="bg-white border border-slate-200/80 rounded-2xl rounded-tl-none p-5 sm:p-6 text-slate-800 text-[13.5px] leading-relaxed shadow-sm min-w-[100px]">
-                      {submitting && !result?.answer ? (
-                        <div className="flex items-center gap-2.5 py-1 text-slate-500">
-                          <Loader2 className="h-4.5 w-4.5 animate-spin text-slate-700" />
-                          <span className="text-xs font-semibold">답변을 정교하게 분석하는 중...</span>
-                        </div>
-                      ) : (
-                        result?.status === "success" || !result ? (
-                          <div className="space-y-4">
-                            <MarkdownContent value={result?.answer || ""} compact />
-                            
-                            {/* 출처 목록 배지 표시 */}
-                            {result?.sources && result.sources.length > 0 && (
-                              <div className="flex flex-wrap gap-1.5 mt-4 pt-3.5 border-t border-slate-100">
-                                <span className="text-[10px] text-slate-400 mr-1.5 self-center font-bold">참고 출처:</span>
-                                {result.sources.map((src: ChatSource, i: number) => (
-                                  <Badge 
-                                    key={i} 
-                                    variant="outline" 
-                                    className="text-[10px] bg-slate-50 hover:bg-slate-150/70 text-slate-650 border-slate-200 cursor-pointer transition-all duration-200 px-2 py-0.5 rounded-lg font-medium shadow-none"
-                                    onClick={() => _onSelectSource(src)}
-                                  >
-                                    {src.title}
-                                  </Badge>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="flex items-start gap-2.5 text-amber-600 bg-amber-50/50 border border-amber-100 rounded-xl p-4">
-                            <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
-                            <div className="flex flex-col gap-0.5">
-                              <span className="font-bold text-xs">{STATUS_COPY[result.status]?.title || result.status}</span>
-                              <span className="text-[11px] text-slate-500">{STATUS_COPY[result.status]?.description}</span>
+                <div className="flex flex-col space-y-2 min-w-0">
+                  <div className="text-slate-800 text-sm leading-relaxed space-y-3 min-w-[100px] pt-1">
+                    {submitting && !result?.answer ? (
+                      <div className="flex items-center gap-2.5 py-1 text-slate-500">
+                        <Loader2 className="h-4.5 w-4.5 animate-spin text-slate-700" />
+                        <span className="text-xs font-semibold">답변을 정교하게 분석하는 중...</span>
+                      </div>
+                    ) : (
+                      result?.status === "success" || !result ? (
+                        <div className="space-y-4">
+                          <div className="flex items-start gap-1">
+                            <span className="font-bold text-slate-900 shrink-0">A. &nbsp;</span>
+                            <div className="flex-1 min-w-0">
+                              <MarkdownContent value={result?.answer || ""} compact />
                             </div>
                           </div>
-                        )
-                      )}
-                    </div>
-                    
-                    {/* 생성 시각 정보 */}
-                    <div className="flex items-center gap-2 text-[10px] text-slate-400 ml-2">
-                      {result?.createdAt && (
-                        <span>{new Date(result.createdAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}</span>
-                      )}
-                    </div>
+                          
+                          {/* 출처 목록 배지 표시 */}
+                          {result?.sources && result.sources.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 mt-4 pt-3.5 border-t border-slate-100">
+                              <span className="text-[10px] text-slate-400 mr-1.5 self-center font-bold">참고 출처:</span>
+                              {result.sources.map((src: ChatSource, i: number) => (
+                                <Badge 
+                                  key={i} 
+                                  variant="outline" 
+                                  className="text-[10px] bg-slate-50 hover:bg-slate-150/70 text-slate-650 border-slate-200 cursor-pointer transition-all duration-200 px-2 py-0.5 rounded-lg font-medium shadow-none"
+                                  onClick={() => _onSelectSource(src)}
+                                >
+                                  {src.title}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex items-start gap-2.5 text-amber-600 bg-amber-50/50 border border-amber-100 rounded-xl p-4">
+                          <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-bold text-xs">{STATUS_COPY[result.status]?.title || result.status}</span>
+                            <span className="text-[11px] text-slate-500">{STATUS_COPY[result.status]?.description}</span>
+                          </div>
+                        </div>
+                      )
+                    )}
+                  </div>
+                  
+                  {/* 생성 시각 정보 */}
+                  <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                    {result?.createdAt && (
+                      <span>{new Date(result.createdAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}</span>
+                    )}
                   </div>
                 </div>
               </div>
