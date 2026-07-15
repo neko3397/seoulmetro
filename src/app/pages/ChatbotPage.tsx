@@ -477,12 +477,12 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
                       </div>
                     ) : (
                       result?.status === "success" || !result ? (
-                        <div className="space-y-4">
-                          <div className="flex items-start gap-1">
-                            <span className="font-bold text-slate-900 shrink-0">A. &nbsp;</span>
-                            <div className="flex-1 min-w-0">
-                              <MarkdownContent value={result?.answer || ""} compact />
-                            </div>
+                        <div className="space-y-3">
+                          <div className="font-bold text-slate-900 text-sm">
+                            A.
+                          </div>
+                          <div className="min-w-0">
+                            <MarkdownContent value={result?.answer || ""} compact />
                           </div>
                           
                           {/* 출처 목록 배지 표시 */}
