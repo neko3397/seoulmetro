@@ -3253,9 +3253,10 @@ html {
   top: 0;
   left: 0;
   bottom: 0;
-  z-index: 40;
+  z-index: 50; /* z-index 상향으로 하단 탭바 및 인풋 필드 위로 오도록 수정 */
   height: 100%;
   width: 18rem; /* 288px */
+  background: #ffffff !important; /* 모바일에서 뒷배경 비침 방지를 위해 불투명 배경 지정 */
   transition-property: transform, width, box-shadow;
   transition-duration: 300ms;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
@@ -3273,6 +3274,7 @@ html {
   .chatbot-sidebar {
     position: relative;
     z-index: auto;
+    background: transparent !important; /* 데스크톱에서는 그라데이션 배경이 보이도록 투명화 */
     box-shadow: none !important;
   }
   
@@ -3287,4 +3289,14 @@ html {
     overflow: hidden;
     border-right-style: none !important;
   }
+}
+
+.chatbot-dim {
+  background-color: rgba(15, 23, 42, 0.35) !important;
+  animation: chatbot-fade-in 200ms ease-out;
+}
+
+@keyframes chatbot-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }

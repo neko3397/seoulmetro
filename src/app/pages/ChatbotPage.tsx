@@ -300,7 +300,7 @@ export function ChatbotPage({ currentUser, onSelectSource: _onSelectSource }: Ch
       {/* 모바일 화면에서 사이드바 오픈 시 배경을 어둡게 가리는 딤(Dim) 레이어 */}
       {isSidebarOpen && (
         <div 
-          className="absolute inset-0 bg-slate-900/35 z-30 lg:hidden animate-fade-in"
+          className="chatbot-dim absolute inset-0 z-30 lg:hidden"
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
